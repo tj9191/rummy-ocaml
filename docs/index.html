@@ -1,69 +1,47 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Rummy – Play</title>
-  <link rel="stylesheet" href="./style.css"/>
-</head>
-<body>
-  <div class="game-state">
-    <div class="section">
-      <h2>Opponent's Hand:</h2>
-      <div class="cards-row">
-        <div class="card card-back"></div><div class="card card-back"></div><div class="card card-back"></div>
-        <div class="card card-back"></div><div class="card card-back"></div><div class="card card-back"></div>
-        <div class="card card-back"></div>
-      </div>
-    </div>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no" />
+    <title>Rummy</title>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+        padding: 12px;
+        background: #0a0a0a;
+        color: #fff;
+        line-height: 1.4;
+      }
+      button {
+        font-size: 16px;
+        padding: 8px 12px;
+        margin: 4px;
+        background: #2a2a2a;
+        color: #fff;
+        border: 1px solid #555;
+        border-radius: 6px;
+      }
+      button:active {
+        background: #444;
+      }
+      ul {
+        padding-left: 20px;
+      }
+      #app {
+        border: 1px solid #444;
+        border-radius: 8px;
+        padding: 12px;
+        background: #1a1a1a;
+        max-width: 400px;
+      }
+    </style>
+  </head>
 
-    <div class="section"><h2>Opponent's melds: (none)</h2></div>
+  <body>
+    <h1 style="font-size:20px;margin-top:0;">Rummy</h1>
+    <div id="app"></div>
 
-    <div class="turn-indicator">Your turn to PLAY</div>
-
-    <div class="center-area">
-      <div class="pile">
-        <h3>Deck: 32 cards</h3>
-        <div class="card card-back"></div>
-      </div>
-      <div class="pile">
-        <h3>Discard Pile:</h3>
-        <div class="card">
-          <div class="card-top"><div class="card-value red">6</div><div class="card-suit red">♦</div></div>
-          <div class="card-bottom"><div class="card-value red">6</div><div class="card-suit red">♦</div></div>
-        </div>
-      </div>
-      <div class="actions">
-        <a href="#" class="action-link">SET</a>
-        <a href="#" class="action-link">RUN</a>
-        <a href="#" class="action-link">PLAY</a>
-        <a href="#" class="action-link">SKIP/DISCARD</a>
-      </div>
-    </div>
-
-    <div class="section">
-      <h2>Your melds:</h2>
-      <div class="cards-row">
-        <div class="card"><div class="card-top"><div class="card-value black">2</div><div class="card-suit black">♠</div></div><div class="card-bottom"><div class="card-value black">2</div><div class="card-suit black">♠</div></div></div>
-        <div class="card"><div class="card-top"><div class="card-value black">3</div><div class="card-suit black">♠</div></div><div class="card-bottom"><div class="card-value black">3</div><div class="card-suit black">♠</div></div></div>
-        <div class="card"><div class="card-top"><div class="card-value black">4</div><div class="card-suit black">♠</div></div><div class="card-bottom"><div class="card-value black">4</div><div class="card-suit black">♠</div></div></div>
-      </div>
-    </div>
-
-    <div class="section">
-      <h2>Your Hand:</h2>
-      <div class="cards-row">
-        <!-- same 8 cards you used -->
-        <div class="card"><div class="card-top"><div class="card-value black">A</div><div class="card-suit black">♣</div></div><div class="card-bottom"><div class="card-value black">A</div><div class="card-suit black">♣</div></div></div>
-        <div class="card"><div class="card-top"><div class="card-value black">10</div><div class="card-suit black">♣</div></div><div class="card-bottom"><div class="card-value black">10</div><div class="card-suit black">♣</div></div></div>
-        <div class="card"><div class="card-top"><div class="card-value red">9</div><div class="card-suit red">♥</div></div><div class="card-bottom"><div class="card-value red">9</div><div class="card-suit red">♥</div></div></div>
-        <div class="card"><div class="card-top"><div class="card-value red">7</div><div class="card-suit red">♦</div></div><div class="card-bottom"><div class="card-value red">7</div><div class="card-suit red">♦</div></div></div>
-        <div class="card"><div class="card-top"><div class="card-value red">8</div><div class="card-suit red">♥</div></div><div class="card-bottom"><div class="card-value red">8</div><div class="card-suit red">♥</div></div></div>
-        <div class="card"><div class="card-top"><div class="card-value black">A</div><div class="card-suit black">♠</div></div><div class="card-bottom"><div class="card-value black">A</div><div class="card-suit black">♠</div></div></div>
-        <div class="card"><div class="card-top"><div class="card-value black">Q</div><div class="card-suit black">♠</div></div><div class="card-bottom"><div class="card-value black">Q</div><div class="card-suit black">♠</div></div></div>
-        <div class="card"><div class="card-top"><div class="card-value black">A</div><div class="card-suit black">♠</div></div><div class="card-bottom"><div class="card-value black">A</div><div class="card-suit black">♠</div></div></div>
-      </div>
-    </div>
-  </div>
-</body>
+    <!-- This is the Bonsai-generated JS bundle -->
+    <script src="app.bc.js"></script>
+  </body>
 </html>
