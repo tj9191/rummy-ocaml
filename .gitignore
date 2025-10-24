@@ -1,0 +1,11 @@
+.DS_Store
+_build/
+phone-build/
+*.o
+*.exe
+*.cmo
+*.cmi
+*.cmt
+*.js.map
+*.pp.ml
+*.pp.mli
