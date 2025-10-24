@@ -1,0 +1,13 @@
+(library
+ (name rummy_engine)
+ (modules types rules engine setup ai)
+ (libraries core)
+ (preprocess (pps ppx_jane))
+)
+
+(executable
+ (name main)
+ (modules main)
+ (libraries rummy_engine core)
+ (preprocess (pps ppx_jane))
+)

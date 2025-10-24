@@ -1,0 +1,131 @@
+/* ===== Base typography & rendering ===== */
+html {
+  -webkit-text-size-adjust: 100%; /* stop iOS from random upscaling */
+}
+body {
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  /* scale font between 14px and 18px based on width */
+  font-size: clamp(14px, 2.5vw, 18px);
+  line-height: 1.4;
+  margin: 0;
+  padding: 0;
+  background: #f5f5f5;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ===== Page frame ===== */
+.game-state {
+  background: #fff;
+  padding: 16px;
+  min-height: 100svh; /* small-viewport unit fixes iOS address bar jump */
+  border-bottom: 12px solid #000;
+}
+
+h2 {
+  font-size: clamp(18px, 4.5vw, 28px);
+  margin: 0 0 12px;
+}
+
+.section { margin-bottom: 20px; }
+
+/* ===== Cards ===== */
+.cards-row {
+  display: flex;
+  gap: clamp(6px, 2vw, 12px);
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+
+.card {
+  /* scale card size with viewport: min 52x72, max 70x100 */
+  width: clamp(52px, 16vw, 70px);
+  height: clamp(72px, 22vw, 100px);
+  border: 2px solid #333;
+  border-radius: 8px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: clamp(4px, 1vw, 6px);
+  position: relative;
+}
+
+.card-back {
+  background: repeating-linear-gradient(45deg, #dc143c, #dc143c 10px, #fff 10px, #fff 20px);
+}
+
+.card-value { font-weight: 700; font-size: clamp(13px, 3.6vw, 16px); }
+.card-suit  { font-size: clamp(16px, 4.2vw, 20px); }
+.red { color: #dc143c; }
+.black { color: #000; }
+.card-top { text-align: left; }
+.card-bottom { text-align: right; transform: rotate(180deg); }
+
+.card-number {
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #0066ff;
+  font-weight: 700;
+  font-size: clamp(12px, 3.5vw, 18px);
+}
+
+/* ===== Table center area ===== */
+.center-area {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: clamp(12px, 3vw, 24px);
+  justify-items: center;
+  align-items: start;
+  margin: 20px 0;
+  position: relative;
+}
+
+.pile { text-align: center; }
+.pile h3 { font-size: clamp(14px, 3.5vw, 18px); margin: 6px 0 8px; }
+
+.turn-indicator {
+  color: #0066ff;
+  font-size: clamp(18px, 5vw, 24px);
+  font-weight: 700;
+  margin: 14px 0;
+}
+
+/* ===== Actions: mobile-first (inline, visible) ===== */
+.actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 10px;
+  position: static; /* no absolute on mobile */
+}
+
+.action-link {
+  color: #0066ff;
+  font-size: clamp(14px, 3.8vw, 20px);
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* ===== UPGRADE layout on wider screens ===== */
+@media (min-width: 768px) {
+  .game-state { padding: 32px; border-bottom-width: 16px; }
+  .center-area {
+    display: flex;
+    gap: 60px;
+    justify-content: center;
+  }
+  .actions {
+    position: absolute;
+    right: -200px; top: 0; /* restore your desktop sidebar */
+    flex-direction: column;
+    gap: 16px;
+    justify-content: flex-start;
+    margin-top: 0;
+  }
+}

@@ -1,0 +1,6 @@
+(executable
+ (name sim)
+ (modules sim)
+ (libraries core rummy_engine)
+ (preprocess (pps ppx_jane))
+)

@@ -1,0 +1,9 @@
+(executable
+ (name app)
+ (modes js)
+ (libraries bonsai.web core virtual_dom rummy_engine)
+ (preprocess (pps ppx_jane))
+ (js_of_ocaml (flags --no-inline --pretty))
+ ;; ↓ Disable warnings-as-errors and silence the specific noisy warnings
+ (flags :standard -warn-error -A -w -23-32-37-69)
+)
