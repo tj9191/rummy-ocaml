@@ -5,71 +5,71 @@
     <title>Rummy</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style>
+      /* ===== Global Styles ===== */
       body {
+        background-color: #ffffff; /* Always white */
+        color: #000000;            /* Always black text */
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         padding: 16px;
         line-height: 1.4;
+        margin: 0;
       }
+
+      h1, h2, h3 {
+        margin: 8px 0;
+      }
+
+      hr {
+        margin: 16px 0;
+      }
+
+      ul {
+        padding-left: 20px;
+      }
+
+      /* ===== Controls ===== */
       button {
         font-size: 16px;
         padding: 8px 12px;
         margin: 4px;
+        background-color: #1976d2;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
       }
+
+      button:hover {
+        background-color: #145ca1;
+      }
+
       input {
         font-size: 16px;
-        padding: 4px 6px;
+        padding: 6px 8px;
         margin: 4px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
       }
-      ul {
-        padding-left: 20px;
-      }
-      h1, h2, h3 {
-        margin: 8px 0;
-      }
-      hr {
-        margin: 16px 0;
+
+      /* ===== Layout tweaks for mobile ===== */
+      @media (max-width: 600px) {
+        body {
+          padding: 12px;
+        }
+
+        button, input {
+          width: 100%;
+          box-sizing: border-box;
+        }
       }
     </style>
   </head>
+
   <body>
+    <!-- Bonsai will mount the OCaml app here -->
     <div id="app"></div>
-    <script src="app.bc.js"></script>
-  </body>
-</html><!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="UTF-8" />
-    <title>Rummy</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <style>
-      body {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        padding: 16px;
-        line-height: 1.4;
-      }
-      button {
-        font-size: 16px;
-        padding: 8px 12px;
-        margin: 4px;
-      }
-      input {
-        font-size: 16px;
-        padding: 4px 6px;
-        margin: 4px;
-      }
-      ul {
-        padding-left: 20px;
-      }
-      h1, h2, h3 {
-        margin: 8px 0;
-      }
-      hr {
-        margin: 16px 0;
-      }
-    </style>
-  </head>
-  <body>
-    <div id="app"></div>
+
+    <!-- The compiled JavaScript output from dune -->
     <script src="app.bc.js"></script>
   </body>
 </html>
