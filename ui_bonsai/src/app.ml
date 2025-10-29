@@ -8,14 +8,8 @@ module T     = RE.Types
 module E     = RE.Engine
 module Setup = Rummy_engine.Setup
 module AI    = Rummy_engine.Ai
-module Html = Js_of_ocaml.Dom_html
-module Js = Js_of_ocaml.Js
 
-(* ---- helpers to write example hands ---- *)
-let h r = { T.suit = Hearts;   rank = r }
-let s r = { T.suit = Spades;   rank = r }
-let d r = { T.suit = Diamonds; rank = r }
-let c r = { T.suit = Clubs;    rank = r }
+(* ---------- helpers ---------- *)
 
 let string_of_card (c : T.card) = RE.Types.string_of_card c
 
@@ -25,113 +19,44 @@ let string_of_phase = function
   | T.Discard  -> "Discard"
   | T.EndCheck -> "EndCheck"
 
-let card_point_value (r : T.rank) : int =
+let rank_order (r : T.rank) : int =
   match r with
-  | T.Ace   -> 15
-  | T.Two   -> 5
-  | T.Three -> 5
-  | T.Four  -> 5
-  | T.Five  -> 5
-  | T.Six   -> 5
-  | T.Seven -> 5
-  | T.Eight -> 5
-  | T.Nine  -> 5
+  | T.Ace   -> 14
+  | T.King  -> 13
+  | T.Queen -> 12
+  | T.Jack  -> 11
   | T.Ten   -> 10
-  | T.Jack  -> 10
-  | T.Queen -> 10
-  | T.King  -> 10
+  | T.Nine  -> 9
+  | T.Eight -> 8
+  | T.Seven -> 7
+  | T.Six   -> 6
+  | T.Five  -> 5
+  | T.Four  -> 4
+  | T.Three -> 3
+  | T.Two   -> 2
 
-(* compute total value of all cards currently on the table in melds *)
-let current_table_points (melds : T.meld list) : int =
-  List.sum (module Int) melds ~f:(fun m ->
-    List.sum (module Int) m.cards ~f:(fun card ->
-      card_point_value card.T.rank
-    )
+let suit_order (s : T.suit) : int =
+  match s with
+  | Hearts   -> 0
+  | Diamonds -> 1
+  | Clubs    -> 2
+  | Spades   -> 3
+
+let sort_hand_for_display (hand : T.card list) : T.card list =
+  List.sort hand ~compare:(fun a b ->
+    let sa = suit_order a.suit
+    and sb = suit_order b.suit in
+    if Int.(sa <> sb) then Int.compare sa sb
+    else Int.compare (rank_order a.rank) (rank_order b.rank)
   )
 
-(* view total meld points *)
-let view_table_points (melds : T.meld list) =
-  let pts = current_table_points melds in
-  Vdom.Node.div
-    [ Vdom.Node.h3 [ Vdom.Node.text "Meld value on table" ]
-    ; Vdom.Node.p
-        [ Vdom.Node.text
-            (Printf.sprintf "%d points currently down" pts)
-        ]
-    ]
+(* ---------- initial state ---------- *)
 
-let view_cards (cards : T.card list) =
-  Vdom.Node.ul
-    (List.mapi cards ~f:(fun i c ->
-       (* display 1-based index to match how you type moves *)
-       let label =
-         Printf.sprintf "%d) %s" (i + 1) (string_of_card c)
-       in
-       Vdom.Node.li [ Vdom.Node.text label ]))
+let h r = { T.suit = Hearts;   rank = r }
+let s r = { T.suit = Spades;   rank = r }
+let d r = { T.suit = Diamonds; rank = r }
+let c r = { T.suit = Clubs;    rank = r }
 
-let view_discard (discard : T.card list) =
-  (* top of discard is head of list *)
-  let items =
-    List.mapi discard ~f:(fun i c ->
-      let label =
-        if i = 0
-        then Printf.sprintf "top: %s" (string_of_card c)
-        else Printf.sprintf "%d) %s" i (string_of_card c)
-      in
-      Vdom.Node.li [ Vdom.Node.text label ])
-  in
-  Vdom.Node.div
-    [ Vdom.Node.h3 [ Vdom.Node.text "Discard pile (top → bottom)" ]
-    ; Vdom.Node.ul items
-    ]
-
-(* show melds currently on the table *)
-let view_melds (melds : T.meld list) =
-  if List.is_empty melds then
-    Vdom.Node.div
-      [ Vdom.Node.h3 [ Vdom.Node.text "Melds on table" ]
-      ; Vdom.Node.p  [ Vdom.Node.text "(none yet)" ]
-      ]
-  else
-    let meld_nodes =
-      List.mapi melds ~f:(fun i m ->
-        let kind_str =
-          match m.kind with
-          | T.Set -> "Set"
-          | T.Run -> "Run"
-        in
-        let cards_str =
-          String.concat ~sep:", "
-            (List.map m.cards ~f:string_of_card)
-        in
-        Vdom.Node.li
-          [ Vdom.Node.text
-              (Printf.sprintf "%d) %s: %s" (i + 1) kind_str cards_str)
-          ])
-    in
-    Vdom.Node.div
-      [ Vdom.Node.h3 [ Vdom.Node.text "Melds on table" ]
-      ; Vdom.Node.ul meld_nodes
-      ]
-
-(* show current scores for each player *)
-let view_scores (scores : int array) (players : T.player array) =
-  let rows =
-    Array.mapi players ~f:(fun i pl ->
-      let label =
-        Printf.sprintf "%s: %d points" pl.T.name scores.(i)
-      in
-      Vdom.Node.li [ Vdom.Node.text label ])
-    |> Array.to_list
-  in
-  Vdom.Node.div
-    [ Vdom.Node.h3 [ Vdom.Node.text "Scores" ]
-    ; Vdom.Node.ul rows
-    ]
-  
-
-
-(* build a starting 2p state; player 2 may be computer or human name *)
 let initial_state ~vs_computer () : T.state =
   let p0 =
     { T.id = 0
@@ -162,10 +87,9 @@ let initial_state ~vs_computer () : T.state =
         ]
     }
   in
-  (* remove those cards from the deck and shuffle the rest *)
   let used_cards = p0.hand @ p1.hand in
-let card_equal (a : T.card) (b : T.card) =
-  Base.Poly.(a.suit = b.suit && a.rank = b.rank)
+  let card_equal (a : T.card) (b : T.card) =
+    Poly.(a.suit = b.suit && a.rank = b.rank)
   in
   let deck_remaining =
     Setup.all_cards
@@ -185,232 +109,321 @@ let card_equal (a : T.card) (b : T.card) =
   ; T.scores          = Array.create ~len:2 0
   }
 
-(* ----- helpers for parsing text input into indices ----- *)
+(* ---------- style helper ---------- *)
+(* Older Bonsai / js_of_ocaml doesn't always ship Css_gen helpers.
+   We'll directly attach a "style" attribute string. *)
+let style (s : string) : Vdom.Attr.t =
+  Vdom.Attr.create "style" s
 
-let parse_indices (s : string) : int list =
-  s
-  |> String.split ~on:' '
-  |> List.filter ~f:(Fn.non String.is_empty)
-  |> List.filter_map ~f:(fun t -> Option.try_with (fun () -> Int.of_string t))
-  |> List.map ~f:(fun k -> k - 1)
+(* ---------- view helpers ---------- *)
 
-let nth i xs =
-  let rec go k = function
-    | [] -> None
-    | x :: tl -> if k = 0 then Some x else go (k - 1) tl
+(* single face-up card *)
+let view_faceup_card ~selected ~on_click (card : T.card) =
+  let border_color = if selected then "gold" else "#333" in
+  let border_px    = if selected then "3px" else "1px" in
+  let card_css =
+    Printf.sprintf {|
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      width:60px;
+      height:90px;
+      margin:4px;
+      border:%s solid %s;
+      border-radius:6px;
+      background-color:white;
+      box-shadow:0px 2px 4px rgba(0,0,0,0.3);
+      cursor:pointer;
+      font-family:sans-serif;
+      font-size:14px;
+      text-align:center;
+      color:black;          /* <-- add this */
+    |} border_px border_color
   in
-  if i < 0 then None else go i xs
+  Vdom.Node.div
+    ~attrs:[
+      style card_css;
+      Vdom.Attr.on_click on_click
+    ]
+    [ Vdom.Node.div [ Vdom.Node.text (string_of_card card) ] ]
 
-let cards_by_indices (hand : T.card list) (idxs0 : int list) : T.card list option =
-  let rec gather acc = function
-    | [] -> Some (List.rev acc)
-    | i :: is ->
-      (match nth i hand with
-       | None -> None
-       | Some c -> gather (c :: acc) is)
+(* facedown deck *)
+let view_facedown_card ~count ~on_click =
+  let label =
+    if count > 0 then Printf.sprintf "Deck (%d)" count
+    else "Empty"
   in
-  gather [] idxs0
+  let deck_css = {|
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    width:60px;
+    height:90px;
+    margin:4px;
+    border:2px solid #003366;
+    border-radius:6px;
+    background-color:#0055aa;
+    box-shadow:0px 2px 4px rgba(0,0,0,0.5);
+    cursor:pointer;
+    font-family:sans-serif;
+    font-size:13px;
+    color:white;
+    text-align:center;
+  |} in
+  Vdom.Node.div
+    ~attrs:[
+      style deck_css;
+      Vdom.Attr.on_click on_click
+    ]
+    [ Vdom.Node.div [ Vdom.Node.text label ] ]
 
-(* ========================================================= *)
-(* Component with AI turn logic                              *)
-(* ========================================================= *)
+(* discard pile fan, head of list is top *)
+let view_discard_pile ~(discard : T.card list) ~on_click_card =
+  let container_css = {|
+    position:relative;
+    width:120px;
+    height:110px;
+    font-family:sans-serif;
+  |} in
+  let empty_css = {|
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    width:100px;
+    height:90px;
+    border:2px dashed #555;
+    border-radius:6px;
+    color:#555;
+    font-size:12px;
+  |} in
+  let card_nodes =
+    List.mapi discard ~f:(fun i card ->
+      let left_px = 5 * i in
+      let wrapper_css =
+        Printf.sprintf {|
+          position:absolute;
+          left:%dpx;
+          top:0px;
+          cursor:pointer;
+        |} left_px
+      in
+      Vdom.Node.div
+        ~attrs:[
+          style wrapper_css;
+          Vdom.Attr.on_click (on_click_card i)
+        ]
+        [ view_faceup_card
+            ~selected:false
+            ~on_click:(fun _ -> Ui_effect.Ignore)
+            card
+        ]
+    )
+  in
+  Vdom.Node.div
+    ~attrs:[ style container_css ]
+    (if List.is_empty discard then
+       [ Vdom.Node.div
+           ~attrs:[ style empty_css ]
+           [ Vdom.Node.text "Discard (empty)" ] ]
+     else
+       card_nodes
+    )
+
+(* bottom hand row *)
+let view_hand_row
+    ~(hand : T.card list)
+    ~(selected_idxs : int list)
+    ~(on_click_card : int -> unit Ui_effect.t)
+  =
+  let row_css = {|
+    display:flex;
+    flex-wrap:wrap;
+    justify-content:center;
+    align-items:flex-end;
+    padding:10px;
+    background-color:#0a0a0a;
+    color:white;
+    min-height:140px;
+    font-family:sans-serif;
+    border-top:2px solid #333;
+  |} in
+  Vdom.Node.div
+    ~attrs:[ style row_css ]
+    (List.mapi hand ~f:(fun i card ->
+       let is_sel = List.mem selected_idxs i ~equal:Int.equal in
+       view_faceup_card
+         ~selected:is_sel
+         ~on_click:(fun _ -> on_click_card i)
+         card
+    ))
+
+let view_melds_top (melds : T.meld list) =
+  let outer_css = {|
+    background-color:#1a1a1a;
+    color:white;
+    padding:10px;
+    font-family:sans-serif;
+    border-bottom:2px solid #333;
+  |} in
+  let title_css = {|
+    margin-bottom:4px;
+    font-size:16px;
+  |} in
+  let meld_css = {|
+    font-size:13px;
+  |} in
+  let meld_nodes =
+    if List.is_empty melds then
+      [ Vdom.Node.div
+          ~attrs:[ style "color:#888;" ]
+          [ Vdom.Node.text "(no melds yet)" ] ]
+    else
+      List.mapi melds ~f:(fun i m ->
+        let kind_str =
+          match m.kind with
+          | T.Set -> "Set"
+          | T.Run -> "Run"
+        in
+        let cards_str =
+          String.concat ~sep:", "
+            (List.map m.cards ~f:string_of_card)
+        in
+        Vdom.Node.div
+          ~attrs:[ style meld_css ]
+          [ Vdom.Node.text
+              (Printf.sprintf "%d) %s: %s" (i+1) kind_str cards_str)
+          ])
+  in
+  Vdom.Node.div
+    ~attrs:[ style outer_css ]
+    ([ Vdom.Node.h3
+         ~attrs:[ style title_css ]
+         [ Vdom.Node.text "Melds on Table" ]
+     ]
+     @ meld_nodes)
+
+let view_status_top ~(st : T.state) =
+  let row_css = {|
+    display:flex;
+    flex-direction:row;
+    flex-wrap:wrap;
+    justify-content:space-between;
+    align-items:center;
+    padding:10px;
+    background-color:#111;
+    color:white;
+    font-family:sans-serif;
+    font-size:14px;
+    border-bottom:2px solid #333;
+  |} in
+  let current_p = st.players.(st.current) in
+  Vdom.Node.div
+    ~attrs:[ style row_css ]
+    [ Vdom.Node.div
+        [ Vdom.Node.text
+            (Printf.sprintf "Current: %s (phase: %s)"
+               current_p.name (string_of_phase st.phase))
+        ]
+    ; Vdom.Node.div
+        [ Vdom.Node.text
+            (Printf.sprintf "Deck: %d | Discard: %d"
+               (List.length st.deck)
+               (List.length st.discard))
+        ]
+    ]
+
+(* ---------- main component ---------- *)
 
 let component graph =
-  (* persistent RNG for the computer policy *)
   let rng = Random.State.make [| 0xC0FFEE |] in
 
-  (* Our full app model:
-     - screen (`Intro or `Playing)
-     - vs_comp (bool)
-     - st (game state)
-     - input boxes for the current human turn
-     - hist: undo stack of past states *)
+  (* screen, vs_comp, st, selected_idxs, hist *)
   let state =
     Bonsai.state
-      (`Intro,
-       false,
-       initial_state ~vs_computer:false (),
-       "" (* drawN *),
-       "" (* set indices *),
-       "" (* run indices *),
-       "" (* lay card idx *),
-       "" (* lay meld idx *),
-       "" (* discard idx *),
-       ([] : T.state list))
+      ( `Intro
+      , false
+      , initial_state ~vs_computer:false ()
+      , ([] : int list)
+      , ([] : T.state list)
+      )
       graph
   in
 
   Bonsai.Value.map state
-    ~f:(fun ((screen
-             , vs_comp
-             , st
-             , drawN
-             , set_s
-             , run_s
-             , lay_c
-             , lay_m
-             , disc_i
-             , hist),
-            set_all) ->
-      (* ---------------- basic setters / input updaters ---------------- *)
+    ~f:(fun ((screen, vs_comp, st, selected_idxs, hist), set_all) ->
 
-      let set_all_full
-            ~screen'
-            ~vs_comp'
-            ~st'
-            ~drawN'
-            ~set_s'
-            ~run_s'
-            ~lay_c'
-            ~lay_m'
-            ~disc_i'
-            ~hist'
-        =
-        set_all
-          ( screen'
-          , vs_comp'
-          , st'
-          , drawN'
-          , set_s'
-          , run_s'
-          , lay_c'
-          , lay_m'
-          , disc_i'
-          , hist'
-          )
+      let set_all_full ~screen' ~vs_comp' ~st' ~selected' ~hist' =
+        set_all (screen', vs_comp', st', selected', hist')
       in
 
-      let set_drawN s =
-        set_all
-          ( screen, vs_comp, st, s, set_s, run_s, lay_c, lay_m, disc_i, hist )
+      let set_screen scr =
+        set_all (scr, vs_comp, st, selected_idxs, hist)
       in
-      let set_set_s s =
-        set_all
-          ( screen, vs_comp, st, drawN, s, run_s, lay_c, lay_m, disc_i, hist )
-      in
-      let set_run_s s =
-        set_all
-          ( screen, vs_comp, st, drawN, set_s, s, lay_c, lay_m, disc_i, hist )
-      in
-      let set_lay_c s =
-        set_all
-          ( screen, vs_comp, st, drawN, set_s, run_s, s, lay_m, disc_i, hist )
-      in
-      let set_lay_m s =
-        set_all
-          ( screen, vs_comp, st, drawN, set_s, run_s, lay_c, s, disc_i, hist )
-      in
-      let set_disc_i s =
-        set_all
-          ( screen, vs_comp, st, drawN, set_s, run_s, lay_c, lay_m, s, hist )
-      in
-
-      let set_screen new_screen =
-        set_all
-          ( new_screen
-          , vs_comp
-          , st
-          , drawN
-          , set_s
-          , run_s
-          , lay_c
-          , lay_m
-          , disc_i
-          , hist
-          )
-      in
-
       let set_vs b =
-        set_all
-          ( screen
-          , b
-          , st
-          , drawN
-          , set_s
-          , run_s
-          , lay_c
-          , lay_m
-          , disc_i
-          , hist
-          )
+        set_all (screen, b, st, selected_idxs, hist)
+      in
+      let set_selected sel =
+        set_all (screen, vs_comp, st, sel, hist)
       in
 
-      (* ---------------- computer turn loop ---------------- *)
-      (* Let the AI (player 1) automatically play until done. *)
+      let toggle_card_index i =
+        let sel =
+          if List.mem selected_idxs i ~equal:Int.equal
+          then List.filter selected_idxs ~f:(fun j -> j <> i)
+          else i :: selected_idxs
+        in
+        set_selected sel
+      in
 
-(* ---------------- computer turn loop ---------------- *)
-      (* Let the AI (player 1) automatically play until done. *)
-      (* Let the AI act up to N steps. After that, if it's STILL the computer's turn,
-   just hand it back to player 0 so the UI never freezes. *)
-let advance_ai_turn (st_start : T.state) : T.state =
-  let max_steps = 20 in
-  let rec loop steps st_ai =
-    (* if it's already human's turn, we're done *)
-    if st_ai.T.current = 0 then
-      st_ai
-    else if steps <= 0 then
-      (* safety cutoff: force turn back to human so UI continues *)
-      { st_ai with current = 0; phase = T.Draw }
-    else
-      match st_ai.T.phase with
-      | T.EndCheck ->
-        (match E.endcheck st_ai with
-         | Ok st' | End_round st' ->
-           if st'.T.current = 0
-           then st'
-           else loop (steps - 1) st'
-         | Error _ ->
-           (* couldn't endcheck; force turn to human *)
-           { st_ai with current = 0; phase = T.Draw })
+      (* AI turn driver *)
+      let advance_ai_turn (st_start : T.state) : T.state =
+        let max_steps = 20 in
+        let rec loop steps st_ai =
+          if st_ai.T.current = 0 then
+            st_ai
+          else if steps <= 0 then
+            { st_ai with current = 0; phase = T.Draw }
+          else
+            match st_ai.T.phase with
+            | T.EndCheck ->
+              (match E.endcheck st_ai with
+               | Ok st' | End_round st' ->
+                 if st'.T.current = 0 then st' else loop (steps - 1) st'
+               | Error _ ->
+                 { st_ai with current = 0; phase = T.Draw })
+            | T.Draw | T.Play | T.Discard ->
+              (match AI.random_ai rng st_ai with
+               | Some st' ->
+                 if st'.T.current = 0 then st'
+                 else loop (steps - 1) st'
+               | None ->
+                 (match E.endcheck st_ai with
+                  | Ok st' | End_round st' ->
+                    if st'.T.current = 0 then st'
+                    else loop (steps - 1) st'
+                  | Error _ ->
+                    { st_ai with current = 0; phase = T.Draw }))
+        in
+        loop max_steps st_start
+      in
 
-      | T.Draw | T.Play | T.Discard ->
-        (match AI.random_ai rng st_ai with
-         | Some st' ->
-           if st'.T.current = 0
-           then st'
-           else loop (steps - 1) st'
-         | None ->
-           (* AI had no legal move; try endcheck once *)
-           (match E.endcheck st_ai with
-            | Ok st' | End_round st' ->
-              if st'.T.current = 0
-              then st'
-              else loop (steps - 1) st'
-            | Error _ ->
-              (* truly stuck; force turn to human *)
-              { st_ai with current = 0; phase = T.Draw }))
-  in
-  loop max_steps st_start
-in
-
-      (* This runs after *any* successful human action.
-         - Push the previous state to hist.
-         - If vs_comp and it's now player 1's turn, let AI finish.
-         - Clear the text boxes.
-      *)
-
-      let apply_and_maybe_ai (st_after : T.state) : (unit Ui_effect.t) =
+      let apply_and_maybe_ai (st_after : T.state) : unit Ui_effect.t =
         let hist' = st :: hist in
         let final_state =
           if vs_comp && st_after.T.current = 1
           then advance_ai_turn st_after
           else st_after
         in
-
         set_all_full
           ~screen':screen
           ~vs_comp':vs_comp
           ~st':final_state
-          ~drawN':""
-          ~set_s':""
-          ~run_s':""
-          ~lay_c':""
-          ~lay_m':""
-          ~disc_i':""
+          ~selected':[]
           ~hist':hist'
       in
 
-      (* Undo/back button: pop from hist *)
       let on_back _ev =
         match hist with
         | prev :: rest ->
@@ -418,340 +431,382 @@ in
             ~screen':screen
             ~vs_comp':vs_comp
             ~st':prev
-            ~drawN':""
-            ~set_s':""
-            ~run_s':""
-            ~lay_c':""
-            ~lay_m':""
-            ~disc_i':""
+            ~selected':[]
             ~hist':rest
         | [] -> Ui_effect.Ignore
       in
 
-      (* ===================================================== *)
-      (* Screen branching                                      *)
-      (* ===================================================== *)
+      (* ---------- phase actions ---------- *)
+
+      let current_player = st.players.(st.current) in
+
+      let selected_cards_from_hand () : T.card list option =
+        let hand = current_player.hand in
+        let max_i = List.length hand - 1 in
+        if List.exists selected_idxs ~f:(fun i -> i < 0 || i > max_i)
+        then None
+        else
+          Some (List.map (List.sort selected_idxs ~compare:Int.compare)
+                  ~f:(fun i -> List.nth_exn hand i))
+      in
+
+            (* Draw phase: click deck or discard pile *)
+      let on_click_deck _ev =
+        if Poly.(st.phase <> T.Draw) || st.current <> 0
+        then Ui_effect.Ignore
+        else (
+          match E.draw ~source:T.FromDeck st with
+          | Ok st' | End_round st' -> apply_and_maybe_ai st'
+          | Error _ -> Ui_effect.Ignore
+        )
+      in
+
+      let on_click_discard_card i_from_top _ev =
+        if Poly.(st.phase <> T.Draw) || st.current <> 0
+        then Ui_effect.Ignore
+        else (
+          let src =
+            if i_from_top = 0
+            then T.FromDiscard
+            else T.FromDiscardN (i_from_top + 1)
+          in
+          match E.draw ~source:src st with
+          | Ok st' | End_round st' -> apply_and_maybe_ai st'
+          | Error _ -> Ui_effect.Ignore
+        )
+      in
+
+      (* Play phase actions *)
+      let on_sort_hand _ev =
+        if st.current <> 0 then Ui_effect.Ignore
+        else (
+          let new_players = Array.copy st.players in
+          let p0 = new_players.(0) in
+          let sorted_hand = sort_hand_for_display p0.hand in
+          new_players.(0) <- { p0 with hand = sorted_hand };
+          let st' = { st with players = new_players } in
+          set_all (screen, vs_comp, st', selected_idxs, hist)
+        )
+      in
+
+      let on_meld_selected _ev =
+        if Poly.(st.phase <> T.Play) || st.current <> 0
+        then Ui_effect.Ignore
+        else (
+          match selected_cards_from_hand () with
+          | None -> Ui_effect.Ignore
+          | Some cs ->
+            let try_set =
+              match E.play ~action:(T.Make_set cs) st with
+              | Ok st' | End_round st' -> Some st'
+              | Error _ -> None
+            in
+            (match try_set with
+             | Some st' -> apply_and_maybe_ai st'
+             | None ->
+               let try_run =
+                 match E.play ~action:(T.Make_run cs) st with
+                 | Ok st' | End_round st' -> Some st'
+                 | Error _ -> None
+               in
+               (match try_run with
+                | Some st'' -> apply_and_maybe_ai st''
+                | None -> Ui_effect.Ignore))
+        )
+      in
+
+      let on_skip_to_discard _ev =
+        if Poly.(st.phase <> T.Play) || st.current <> 0
+        then Ui_effect.Ignore
+        else (
+          match E.play ~action:T.Skip_to_discard st with
+          | Ok st' | End_round st' -> apply_and_maybe_ai st'
+          | Error _ -> Ui_effect.Ignore
+        )
+      in
+
+      (* Discard phase *)
+      let on_discard_click _ev =
+        if Poly.(st.phase <> T.Discard) || st.current <> 0
+        then Ui_effect.Ignore
+        else (
+          match selected_cards_from_hand () with
+          | Some [card] ->
+            (match E.discard ~action:(T.Discard_card card) st with
+             | Ok st' | End_round st' -> apply_and_maybe_ai st'
+             | Error _ -> Ui_effect.Ignore)
+          | _ -> Ui_effect.Ignore
+        )
+      in
+
+      (* EndCheck *)
+      let on_end_check _ev =
+        match E.endcheck st with
+        | Ok st' | End_round st' -> apply_and_maybe_ai st'
+        | Error _ -> Ui_effect.Ignore
+      in
+
+      (* ---------- render ---------- *)
 
       match screen with
       | `Intro ->
+        let page_css = {|
+          font-family:sans-serif;
+          color:white;
+          background-color:#000;
+          min-height:100vh;
+          display:flex;
+          flex-direction:column;
+          align-items:center;
+          justify-content:center;
+          gap:20px;
+          text-align:center;
+        |} in
+        let btn_css = {|
+          padding:8px 12px;
+          font-size:16px;
+          cursor:pointer;
+          color:black;
+          background-color:#eee;
+          border-radius:4px;
+          border:1px solid #666;
+          margin:0 10px;
+        |} in
+
         let start_pass_and_play _ev =
+          let st0 = initial_state ~vs_computer:false () in
           Ui_effect.Many
             [ set_vs false
             ; set_all_full
                 ~screen':`Playing
                 ~vs_comp':false
-                ~st':(initial_state ~vs_computer:false ())
-                ~drawN':""
-                ~set_s':""
-                ~run_s':""
-                ~lay_c':""
-                ~lay_m':""
-                ~disc_i':""
+                ~st':st0
+                ~selected':[]
                 ~hist':[]
             ]
         in
         let start_vs_computer _ev =
+          let st0 = initial_state ~vs_computer:true () in
           Ui_effect.Many
             [ set_vs true
             ; set_all_full
                 ~screen':`Playing
                 ~vs_comp':true
-                ~st':(initial_state ~vs_computer:true ())
-                ~drawN':""
-                ~set_s':""
-                ~run_s':""
-                ~lay_c':""
-                ~lay_m':""
-                ~disc_i':""
+                ~st':st0
+                ~selected':[]
                 ~hist':[]
             ]
         in
 
         Vdom.Node.div
-          [ Vdom.Node.h1 [ Vdom.Node.text "Welcome to Rummy!" ]
-          ; Vdom.Node.p  [ Vdom.Node.text "Choose a mode to begin:" ]
+          ~attrs:[ style page_css ]
+          [ Vdom.Node.h1
+              ~attrs:[ style "font-size:32px;margin:0;" ]
+              [ Vdom.Node.text "Welcome to Rummy!" ]
+          ; Vdom.Node.p
+              [ Vdom.Node.text "Choose a mode to begin:" ]
           ; Vdom.Node.div
               [ Vdom.Node.button
-                  ~attrs:[ Vdom.Attr.on_click start_pass_and_play ]
+                  ~attrs:[ Vdom.Attr.on_click start_pass_and_play
+                          ; style btn_css ]
                   [ Vdom.Node.text "Pass & Play" ]
               ; Vdom.Node.button
-                  ~attrs:
-                    [ Vdom.Attr.on_click start_vs_computer
-                    ; Vdom.Attr.style (Css_gen.margin_left (`Px 10))
-                    ]
+                  ~attrs:[ Vdom.Attr.on_click start_vs_computer
+                          ; style btn_css ]
                   [ Vdom.Node.text "Play vs Computer" ]
               ]
           ]
 
       | `Playing ->
-        (* shared handler for EndCheck button *)
-        let on_end_check _ev =
-          match E.endcheck st with
-          | Ok st' | End_round st' -> apply_and_maybe_ai st'
-          | Error _ -> Ui_effect.Ignore
-        in
+        let screen_css = {|
+          display:flex;
+          flex-direction:column;
+          min-height:100vh;
+          background-color:#000;
+          color:white;
+          font-family:sans-serif;
+        |} in
+        let middle_wrap_css = {|
+          flex-grow:1;
+          display:flex;
+          flex-direction:column;
+          align-items:center;
+          justify-content:center;
+          background-color:#0f0f0f;
+          color:white;
+          font-family:sans-serif;
+          padding:20px;
+        |} in
+        let table_css = {|
+          display:flex;
+          flex-direction:row;
+          align-items:flex-start;
+          justify-content:center;
+          gap:40px;
+          padding:20px;
+          background-color:#1a1a1a;
+          border:2px solid #333;
+          border-radius:8px;
+          box-shadow:0px 4px 10px rgba(0,0,0,0.6);
+        |} in
+        let bottom_css = {|
+          background-color:#000;
+          border-top:2px solid #333;
+          padding:10px;
+          color:white;
+          font-family:sans-serif;
+          text-align:center;
+        |} in
+        let hand_title_css = {|
+          color:white;
+          font-size:16px;
+          margin-bottom:6px;
+        |} in
+        let controls_row_css = {|
+          display:flex;
+          flex-direction:row;
+          flex-wrap:wrap;
+          justify-content:center;
+          gap:10px;
+          margin-top:8px;
+        |} in
+        let btn_small_css = {|
+          padding:6px 10px;
+          cursor:pointer;
+          background-color:#eee;
+          color:black;
+          border-radius:4px;
+          border:1px solid #666;
+          font-size:14px;
+        |} in
+        let endcheck_wrap_css = {|
+          display:flex;
+          flex-direction:column;
+          align-items:center;
+          justify-content:center;
+          gap:10px;
+          margin-top:8px;
+          text-align:center;
+        |} in
 
-        (* controls vary with phase *)
-        let controls : Vdom.Node.t list =
+        (* phase_controls depends on st.phase *)
+        let phase_controls =
           match st.phase with
           | T.Draw ->
-            let on_draw_deck _ =
-              match E.draw ~source:T.FromDeck st with
-              | Ok st' | End_round st' -> apply_and_maybe_ai st'
-              | Error _ -> Ui_effect.Ignore
-            in
-            let on_draw_discard_top _ =
-              match E.draw ~source:T.FromDiscard st with
-              | Ok st' | End_round st' -> apply_and_maybe_ai st'
-              | Error _ -> Ui_effect.Ignore
-            in
-            let on_draw_discard_n _ =
-              let n =
-                match Int.of_string_opt (String.strip drawN) with
-                | Some k when k > 0 -> k
-                | _ -> 1
-              in
-              match E.draw ~source:(T.FromDiscardN n) st with
-              | Ok st' | End_round st' -> apply_and_maybe_ai st'
-              | Error _ -> Ui_effect.Ignore
-            in
-            [ Vdom.Node.h3 [ Vdom.Node.text "Draw phase" ]
-            ; Vdom.Node.div
-                [ Vdom.Node.button
-                    ~attrs:[ Vdom.Attr.on_click on_draw_deck ]
-                    [ Vdom.Node.text "Draw from deck" ]
-                ; Vdom.Node.button
-                    ~attrs:
-                      [ Vdom.Attr.on_click on_draw_discard_top
-                      ; Vdom.Attr.style (Css_gen.margin_left (`Px 8))
-                      ]
-                    [ Vdom.Node.text "Draw top of discard" ]
-                ]
-            ; Vdom.Node.div
-                [ Vdom.Node.input
-                    ~attrs:
-                      [ Vdom.Attr.type_ "number"
-                      ; Vdom.Attr.placeholder "N"
-                      ; Vdom.Attr.value drawN
-                      ; Vdom.Attr.min 1.
-                      ; Vdom.Attr.on_input (fun _ev s -> set_drawN s)
-                      ; Vdom.Attr.style (Css_gen.width (`Px 80))
-                      ]
-                    ()
-                ; Vdom.Node.button
-                    ~attrs:
-                      [ Vdom.Attr.on_click on_draw_discard_n
-                      ; Vdom.Attr.style (Css_gen.margin_left (`Px 8))
-                      ]
-                    [ Vdom.Node.text "Draw N from discard" ]
-                ]
-            ]
+            Vdom.Node.div
+              [ Vdom.Node.div
+                  ~attrs:[ style "color:white;font-size:14px;margin-top:8px;" ]
+                  [ Vdom.Node.text
+                      "Draw phase: click Deck or Discard pile above." ]
+              ]
 
           | T.Play ->
-            let p = st.players.(st.current) in
-            let on_make_set _ =
-              match cards_by_indices p.hand (parse_indices set_s) with
-              | None -> Ui_effect.Ignore
-              | Some cs ->
-                (match E.play ~action:(T.Make_set cs) st with
-                 | Ok st' | End_round st' -> apply_and_maybe_ai st'
-                 | Error _ -> Ui_effect.Ignore)
-            in
-            let on_make_run _ =
-              match cards_by_indices p.hand (parse_indices run_s) with
-              | None -> Ui_effect.Ignore
-              | Some cs ->
-                (match E.play ~action:(T.Make_run cs) st with
-                 | Ok st' | End_round st' -> apply_and_maybe_ai st'
-                 | Error _ -> Ui_effect.Ignore)
-            in
-            let on_layoff _ =
-              let ci_opt = Int.of_string_opt (String.strip lay_c) in
-              let mi_opt = Int.of_string_opt (String.strip lay_m) in
-              match ci_opt, mi_opt with
-              | Some ci1, Some mi1 ->
-                let ci0 = ci1 - 1
-                and mi0 = mi1 - 1 in
-                (match nth ci0 p.hand with
-                 | None -> Ui_effect.Ignore
-                 | Some card ->
-                   (match E.play ~action:(T.Lay_off (card, mi0)) st with
-                    | Ok st' | End_round st' -> apply_and_maybe_ai st'
-                    | Error _ -> Ui_effect.Ignore))
-              | _ -> Ui_effect.Ignore
-            in
-            let on_skip _ =
-              match E.play ~action:T.Skip_to_discard st with
-              | Ok st' | End_round st' -> apply_and_maybe_ai st'
-              | Error _ -> Ui_effect.Ignore
-            in
-            [ Vdom.Node.h3 [ Vdom.Node.text "Play phase" ]
-            ; Vdom.Node.div
-                [ Vdom.Node.input
-                    ~attrs:
-                      [ Vdom.Attr.placeholder "set: indices e.g. 1 3 5"
-                      ; Vdom.Attr.value set_s
-                      ; Vdom.Attr.on_input (fun _ev s -> set_set_s s)
-                      ; Vdom.Attr.style (Css_gen.width (`Px 240))
-                      ]
-                    ()
-                ; Vdom.Node.button
-                    ~attrs:
-                      [ Vdom.Attr.on_click on_make_set
-                      ; Vdom.Attr.style (Css_gen.margin_left (`Px 8))
-                      ]
-                    [ Vdom.Node.text "Make set" ]
-                ]
-            ; Vdom.Node.div
-                [ Vdom.Node.input
-                    ~attrs:
-                      [ Vdom.Attr.placeholder "run: indices e.g. 2 3 4"
-                      ; Vdom.Attr.value run_s
-                      ; Vdom.Attr.on_input (fun _ev s -> set_run_s s)
-                      ; Vdom.Attr.style (Css_gen.width (`Px 240))
-                      ]
-                    ()
-                ; Vdom.Node.button
-                    ~attrs:
-                      [ Vdom.Attr.on_click on_make_run
-                      ; Vdom.Attr.style (Css_gen.margin_left (`Px 8))
-                      ]
-                    [ Vdom.Node.text "Make run" ]
-                ]
-            ; Vdom.Node.div
-                [ Vdom.Node.input
-                    ~attrs:
-                      [ Vdom.Attr.placeholder "layoff: card index"
-                      ; Vdom.Attr.value lay_c
-                      ; Vdom.Attr.on_input (fun _ev s -> set_lay_c s)
-                      ; Vdom.Attr.style (Css_gen.width (`Px 140))
-                      ]
-                    ()
-                ; Vdom.Node.input
-                    ~attrs:
-                      [ Vdom.Attr.placeholder "on meld index"
-                      ; Vdom.Attr.value lay_m
-                      ; Vdom.Attr.on_input (fun _ev s -> set_lay_m s)
-                      ; Vdom.Attr.style
-                          (Css_gen.concat
-                             [ Css_gen.width (`Px 140)
-                             ; Css_gen.margin_left (`Px 6)
-                             ])
-                      ]
-                    ()
-                ; Vdom.Node.button
-                    ~attrs:
-                      [ Vdom.Attr.on_click on_layoff
-                      ; Vdom.Attr.style (Css_gen.margin_left (`Px 8))
-                      ]
-                    [ Vdom.Node.text "Layoff card on meld" ]
-                ]
-            ; Vdom.Node.button
-                ~attrs:
-                  [ Vdom.Attr.on_click on_skip
-                  ; Vdom.Attr.style (Css_gen.margin_top (`Px 8))
-                  ]
-                [ Vdom.Node.text "Skip to Discard" ]
-            ]
+            Vdom.Node.div
+              ~attrs:[ style controls_row_css ]
+              [ Vdom.Node.button
+                  ~attrs:[ Vdom.Attr.on_click on_sort_hand
+                         ; style btn_small_css ]
+                  [ Vdom.Node.text "SORT HAND" ]
+              ; Vdom.Node.button
+                  ~attrs:[ Vdom.Attr.on_click on_meld_selected
+                         ; style btn_small_css ]
+                  [ Vdom.Node.text "MELD THESE CARDS" ]
+              ; Vdom.Node.button
+                  ~attrs:[ Vdom.Attr.on_click on_skip_to_discard
+                         ; style btn_small_css ]
+                  [ Vdom.Node.text "SKIP TO DISCARD PHASE" ]
+              ]
 
           | T.Discard ->
-            let p = st.players.(st.current) in
-            let on_discard_click _ =
-              let idx0 =
-                match Int.of_string_opt (String.strip disc_i) with
-                | Some k when k >= 1 -> k - 1
-                | _ -> 0
-              in
-              match nth idx0 p.hand with
-              | None -> Ui_effect.Ignore
-              | Some card ->
-                (match E.discard ~action:(T.Discard_card card) st with
-                 | Ok st' | End_round st' -> apply_and_maybe_ai st'
-                 | Error _ -> Ui_effect.Ignore)
-            in
-            [ Vdom.Node.h3 [ Vdom.Node.text "Discard phase" ]
-            ; Vdom.Node.div
-                [ Vdom.Node.input
-                    ~attrs:
-                      [ Vdom.Attr.placeholder "discard: card index"
-                      ; Vdom.Attr.value disc_i
-                      ; Vdom.Attr.on_input (fun _ev s -> set_disc_i s)
-                      ; Vdom.Attr.style (Css_gen.width (`Px 160))
-                      ]
-                    ()
-                ; Vdom.Node.button
-                    ~attrs:
-                      [ Vdom.Attr.on_click on_discard_click
-                      ; Vdom.Attr.style (Css_gen.margin_left (`Px 8))
-                      ]
-                    [ Vdom.Node.text "Discard" ]
-                ]
-            ]
+            Vdom.Node.div
+              ~attrs:[ style controls_row_css ]
+              [ Vdom.Node.button
+                  ~attrs:[ Vdom.Attr.on_click on_discard_click
+                         ; style btn_small_css ]
+                  [ Vdom.Node.text "DISCARD" ]
+              ]
 
           | T.EndCheck ->
-  let pass_message =
-    if not vs_comp then
-      Vdom.Node.p
-        ~attrs:[ Vdom.Attr.style (Css_gen.color (`Name "red")) ]
-        [ Vdom.Node.text "Please pass your device to the next player." ]
-    else
-      Vdom.Node.none
-  in
-  [ Vdom.Node.h3 [ Vdom.Node.text "End-of-turn checks" ]
-  ; pass_message
-  ; Vdom.Node.button
-      ~attrs:[ Vdom.Attr.on_click on_end_check ]
-      [ Vdom.Node.text "Continue / End check" ]
-  ]
+            let pass_msg =
+              if not vs_comp then
+                Vdom.Node.p
+                  ~attrs:[ style "color:red;font-size:14px;margin-top:8px;" ]
+                  [ Vdom.Node.text
+                      "Please pass your device to the next player." ]
+              else
+                Vdom.Node.none
+            in
+            Vdom.Node.div
+              ~attrs:[ style endcheck_wrap_css ]
+              [ pass_msg
+              ; Vdom.Node.button
+                  ~attrs:[ Vdom.Attr.on_click on_end_check
+                         ; style btn_small_css ]
+                  [ Vdom.Node.text "CONTINUE" ]
+              ]
         in
 
-        (* main board panel *)
-        let p = st.players.(st.current) in
-Vdom.Node.div
-  [ Vdom.Node.h1 [ Vdom.Node.text "" ]
+        let human_hand = st.players.(0).hand in
 
-  ; Vdom.Node.p
-      [ Vdom.Node.text
-          (Printf.sprintf "Current: %s (phase: %s)"
-             p.name (string_of_phase st.phase)) ]
+        let top_area =
+          Vdom.Node.div
+            [ view_status_top ~st
+            ; view_melds_top st.melds
+            ]
+        in
 
-  ; Vdom.Node.p
-      [ Vdom.Node.text
-          (Printf.sprintf "Deck: %d   Discard: %d"
-             (List.length st.deck) (List.length st.discard)) ]
+        let middle_area =
+          Vdom.Node.div
+            ~attrs:[ style middle_wrap_css ]
+            [ Vdom.Node.div
+                ~attrs:[ style table_css ]
+                [ view_facedown_card
+                    ~count:(List.length st.deck)
+                    ~on_click:on_click_deck
+                ; view_discard_pile
+                    ~discard:st.discard
+                    ~on_click_card:on_click_discard_card
+                ]
+            ]
+        in
 
-; (if Poly.(st.T.phase = T.EndCheck) then
-     Vdom.Node.div
-       [ Vdom.Node.h3
-           [ Vdom.Node.text "Please pass your device to the next player." ] ]
-   else
-     Vdom.Node.div
-       [ Vdom.Node.h3 [ Vdom.Node.text (p.name ^ "'s hand") ]
-       ; view_cards p.hand
-       ])
+        let bottom_area =
+          Vdom.Node.div
+            ~attrs:[ style bottom_css ]
+            [ Vdom.Node.h3
+                ~attrs:[ style hand_title_css ]
+                [ Vdom.Node.text "Player 1's Hand" ]
+            ; view_hand_row
+                ~hand:human_hand
+                ~selected_idxs:selected_idxs
+                ~on_click_card:(fun i ->
+                  if st.current = 0 then toggle_card_index i
+                  else Ui_effect.Ignore)
+            ; phase_controls
+            ]
+        in
 
-  (* show discard pile *)
-  ; view_discard st.discard
-  
+        let undo_button =
+          match hist with
+          | _ :: _ ->
+            Vdom.Node.div
+              ~attrs:[ style "padding:10px;text-align:center;" ]
+              [ Vdom.Node.button
+                  ~attrs:[ Vdom.Attr.on_click on_back
+                         ; style btn_small_css ]
+                  [ Vdom.Node.text "⬅ UNDO" ]
+              ]
+          | [] -> Vdom.Node.none
+        in
 
-  (* NEW: show melds that have been laid on the table *)
-  
-  ; view_melds st.melds
-
-  ; Vdom.Node.hr ()
-
-  ; Vdom.Node.div controls
-
-  ; (match hist with
-     | _ :: _ ->
-       Vdom.Node.button
-         ~attrs:
-           [ Vdom.Attr.on_click on_back
-           ; Vdom.Attr.style (Css_gen.margin_top (`Px 10))
-           ]
-         [ Vdom.Node.text "⬅ Back" ]
-     | [] -> Vdom.Node.none)
-  ]
+        let screen_node_css = screen_css in
+        Vdom.Node.div
+          ~attrs:[ style screen_node_css ]
+          [ top_area
+          ; middle_area
+          ; bottom_area
+          ; undo_button
+          ]
     )
 
 let () =
