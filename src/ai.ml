@@ -107,18 +107,54 @@ let legalize_discards (st : T.state) =
 (** A policy chooses and applies 1 legal move, returning the new state. *)
 type policy = Random.State.t -> T.state -> T.state option
 
+(* NEW: small helpers to “force progress” when random choice can’t find anything *)
+
+let force_skip_then_discard (st : T.state) : T.state option =
+  (* Try to go from Play -> Discard, then discard some card *)
+  match E.play ~action:T.Skip_to_discard st with
+  | Ok st_d | E.End_round st_d -> (
+      let p = st_d.players.(st_d.current) in
+      match p.hand with
+      | [] ->
+          (* no card to discard → just try endcheck *)
+          apply_endcheck st_d
+      | c :: _ -> apply_discard ~card:c st_d
+    )
+  | Error _ ->
+      None
+
+let force_discard_from_discard_phase (st : T.state) : T.state option =
+  let p = st.players.(st.current) in
+  match p.hand with
+  | [] -> apply_endcheck st
+  | c :: _ -> apply_discard ~card:c st
+
 let random_ai : policy =
  fun rng st ->
   match st.T.phase with
   | T.Draw ->
       let draws = legalize_draws st in
-      Option.bind (choose_random rng draws) ~f:(fun src -> apply_draw ~source:src st)
+      (match choose_random rng draws with
+       | Some src -> apply_draw ~source:src st
+       | None ->
+           (* no legal draw? just try endcheck to pass *)
+           apply_endcheck st)
   | T.Play ->
       let plays = legalize_plays st in
-      Option.bind (choose_random rng plays) ~f:(fun act -> apply_play ~action:act st)
+      (match choose_random rng plays with
+       | Some act ->
+           apply_play ~action:act st
+       | None ->
+           (* IMPORTANT: random couldn’t find *anything* in Play.
+              Force: Play -> Discard -> (some card) *)
+           force_skip_then_discard st)
   | T.Discard ->
       let discards = legalize_discards st in
-      Option.bind (choose_random rng discards) ~f:(fun c -> apply_discard ~card:c st)
+      (match choose_random rng discards with
+       | Some c -> apply_discard ~card:c st
+       | None ->
+           (* still in Discard but couldn’t discard? force it *)
+           force_discard_from_discard_phase st)
   | T.EndCheck ->
       apply_endcheck st
 
@@ -200,7 +236,7 @@ let timed_pick_draw
 let timed_pick_play
     (rng : Random.State.t)
     (st : T.state)
-    (choices : _ list)  (* list of actions; let the type infer *)
+    (choices : _ list)
     ~(opponent : policy)
     (time_ms : int)
   : T.state option =
@@ -281,10 +317,14 @@ let timed_ai ?(time_ms = 2000) ~(opponent : policy) : policy =
         timed_pick_draw rng st cands ~opponent time_ms
     | T.Play ->
         let cands = legalize_plays st in
-        timed_pick_play rng st cands ~opponent time_ms
+        (match timed_pick_play rng st cands ~opponent time_ms with
+         | Some st' -> Some st'
+         | None -> force_skip_then_discard st)
     | T.Discard ->
         let cands = legalize_discards st in
-        timed_pick_discard rng st cands ~opponent time_ms
+        (match timed_pick_discard rng st cands ~opponent time_ms with
+         | Some st' -> Some st'
+         | None -> force_discard_from_discard_phase st)
     | T.EndCheck ->
         apply_endcheck st
 
