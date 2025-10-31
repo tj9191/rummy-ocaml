@@ -7,10 +7,6 @@ module E = Engine
 module R = Rules
 [@@@ocaml.warning "-32"]  (* disable unused-value-declaration warnings *)
 
-(* ========================================= *)
-(* Small helpers                             *)
-(* ========================================= *)
-
 let choose_random (rng : Random.State.t) (xs : 'a list) : 'a option =
   match xs with
   | [] -> None
@@ -50,10 +46,6 @@ let apply_endcheck (st : T.state) : T.state option =
   match E.endcheck st with
   | Ok st' | E.End_round st' -> Some st'
   | Error _ -> None
-
-(* ========================================= *)
-(* Enumerating candidate moves               *)
-(* ========================================= *)
 
 let candidate_draws (st : T.state) : T.draw_source list =
   let from_deck     = [ T.FromDeck ] in
@@ -101,10 +93,6 @@ let legalize_discards (st : T.state) : T.card list =
   |> List.filter_map ~f:(fun c ->
        Option.map (apply_discard ~card:c st) ~f:(fun _ -> c))
 
-(* ========================================= *)
-(* AI policies (random, forced)              *)
-(* ========================================= *)
-
 type policy = Random.State.t -> T.state -> T.state option
 
 let force_skip_then_discard (st : T.state) : T.state option =
@@ -144,10 +132,6 @@ let random_ai : policy =
   | T.EndCheck ->
       apply_endcheck st
 
-(* ========================================= *)
-(* Very cheap evaluation for minimax         *)
-(* ========================================= *)
-
 let card_points (c : T.card) : int =
   match c.rank with
   | T.Ace -> 15
@@ -166,11 +150,6 @@ let eval_state (st : T.state) : int =
   (* "score lead" minus "my deadwood" plus "their deadwood" *)
   (s0 - s1) - h0 + h1
 
-(* ========================================= *)
-(* Minimax with tiny depth                    *)
-(* ========================================= *)
-
-(* ---------- successors: all next states for the current player ---------- *)
 let successors (st : T.state) : T.state list =
   match st.phase with
   | T.Draw ->
@@ -201,11 +180,9 @@ let successors (st : T.state) : T.state list =
        | None -> []
        | Some st' -> [ st' ])
 
-(* simple eval: our points - their points *)
 let eval_state (st : T.state) : int =
   st.scores.(0) - st.scores.(1)
 
-(* depth-limited minimax on our synthetic move graph *)
 let rec minimax_eval ~(depth:int) ~(maximizing:bool) (st : T.state) : int =
   if depth = 0 then
     eval_state st
@@ -222,7 +199,6 @@ let rec minimax_eval ~(depth:int) ~(maximizing:bool) (st : T.state) : int =
       List.fold succs ~init:Int.max_value ~f:(fun best st' ->
         Int.min best (minimax_eval ~depth:(depth - 1) ~maximizing:true st'))
 
-(* one-ply minimax policy: look at all legal next states, score them, pick best *)
 let minimax_ai ?(depth=2) : policy =
  fun _rng st ->
   let my_turn = st.current in
@@ -248,10 +224,6 @@ let minimax_ai ?(depth=2) : policy =
               if v < best_val then (cand, v) else (best_st, best_val))
       in
       Some best_state
-
-(* ========================================= *)
-(* Timed Monte Carlo chooser (your old HW4)  *)
-(* ========================================= *)
 
 let simulate_to_end
     (rng : Random.State.t)
@@ -433,10 +405,6 @@ let timed_ai ?(time_ms = 2000) ~(opponent : policy) : policy =
          | None -> force_discard_from_discard_phase st)
     | T.EndCheck ->
         apply_endcheck st
-
-(* ========================================= *)
-(* Simulation harness                        *)
-(* ========================================= *)
 
 type game_result =
   { winner      : int

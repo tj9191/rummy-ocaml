@@ -5,10 +5,9 @@
     <title>Rummy</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style>
-      /* ===== Global Styles ===== */
       body {
-        background-color: #ffffff; /* Always white */
-        color: #000000;            /* Always black text */
+        background-color: #ffffff;
+        color: #000000;            
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         padding: 16px;
         line-height: 1.4;
@@ -27,7 +26,6 @@
         padding-left: 20px;
       }
 
-      /* ===== Controls ===== */
       button {
         font-size: 16px;
         padding: 8px 12px;
@@ -51,7 +49,7 @@
         border-radius: 4px;
       }
 
-      /* ===== Layout tweaks for mobile ===== */
+      /* Mobile layout */
       @media (max-width: 600px) {
         body {
           padding: 12px;
@@ -66,10 +64,8 @@
   </head>
 
   <body>
-    <!-- Bonsai will mount the OCaml app here -->
     <div id="app"></div>
 
-    <!-- The compiled JavaScript output from dune -->
     <script src="app.bc.js"></script>
   </body>
 </html>

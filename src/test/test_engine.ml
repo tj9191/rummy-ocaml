@@ -96,8 +96,6 @@ let%test "discard removes a card from hand and grows discard" =
   | c :: _ ->
     (match E.discard ~action:(T.Discard_card c) st1 with
      | Ok st2 | E.End_round st2 ->
-       (* turn likely advanced; don’t look at st2.current’s hand.
-          Instead assert global invariants: *)
        total_hand_cards st2 = hands_before - 1
        && List.length st2.discard = discard_before + 1
        && (match st2.discard with d::_ -> String.(Rummy_engine.Types.string_of_card d

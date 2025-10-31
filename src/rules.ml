@@ -45,5 +45,4 @@ let valid_meld ~ace_policy cards =
 let can_layoff ~ace_policy (c : card) (m : meld) : bool =
   valid_meld ~ace_policy (c :: m.cards)
 
-(* If you still have this stub here, keep it; it's harmless. *)
 let deadwood_points (_hand : card list) : int = 0

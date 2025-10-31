@@ -72,7 +72,6 @@ let replace_nth (xs : 'a list) (idx : int) (x : 'a) : ('a list, string) result =
   in
   if idx < 0 then Result.Error "meld index out of range" else go idx [] xs
 
-(* When a meld/run/layoff uses cards, clear the "required_to_use" if satisfied *)
 let clear_required_if_used (st : state) (used : card list) : state =
   match st.required_to_use with
   | None -> st
@@ -80,8 +79,6 @@ let clear_required_if_used (st : state) (used : card list) : state =
       if List.exists ((=) r) used
       then { st with required_to_use = None }
       else st
-
-(* ---------- Play actions ---------- *)
 
 let apply_make_set (cards : card list) (st : state) : (state, error) result =
   if List.length cards < 3 then Error (Illegal_play "set must have ≥3 cards") else
@@ -134,8 +131,6 @@ let apply_layoff (card, meld_idx) (st : state) : (state, error) result =
                   let st' = replace_current { st with melds = melds' } p' in
                   let st'' = clear_required_if_used st' [card] in
                   Ok st''))
-
-(* ---------- Draw transition ---------- *)
 
 let draw ~(source : draw_source) (st : state) : step_result =
   match st.phase with
@@ -190,8 +185,6 @@ let draw ~(source : draw_source) (st : state) : step_result =
     )
   | ph -> Error (Illegal_phase ph)
 
-(* ---------- Play transition ---------- *)
-
 let play ~(action : play_action) (st : state) : step_result =
   match st.phase with
   | Play ->
@@ -211,8 +204,6 @@ let play ~(action : play_action) (st : state) : step_result =
        | Ok st' -> Ok st'           (* remain in Play after meld/layoff/ok skip *)
        | Error e -> Error e)
   | ph -> Error (Illegal_phase ph)
-
-(* ---------- Discard transition ---------- *)
 
 let discard ~(action : discard_action) (st : state) : step_result =
   match st.phase with
@@ -234,8 +225,6 @@ let discard ~(action : discard_action) (st : state) : step_result =
                 in
                 Ok st'))
   | ph -> Error (Illegal_phase ph)
-
-(* ---------- EndCheck transition ---------- *)
 
 let endcheck (st : state) : step_result =
   match st.phase with

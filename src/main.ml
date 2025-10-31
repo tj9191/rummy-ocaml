@@ -252,8 +252,7 @@ let rec ai_turn (st : state) : state =
       (match Engine.endcheck st with
        | Ok st' | End_round st' -> st'
        | Error _ -> st)
-
-(* Handle a round end: score, check for winner, or start next round *)
+       
 let handle_round_end (st' : state) : state =
   let st_scored = score_round st' in
   let maybe_winner =
