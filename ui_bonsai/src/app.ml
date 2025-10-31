@@ -9,6 +9,7 @@ module E     = Rummy_engine.Engine
 module Setup = Rummy_engine.Setup
 
 let () = Random.self_init ()
+let deck_depletion_count = ref 0
 
 (* ---------- helpers ---------- *)
 
@@ -187,9 +188,11 @@ let view_discard_pile
     ~on_click_stack
     ~on_click_bar
   =
+  (* changed to width:100% and max-width for mobile *)
   let outer_css = {|
     display:flex;flex-direction:column;align-items:center;
-    font-family:sans-serif;min-width:260px;
+    font-family:sans-serif;
+    width:100%;max-width:360px;
   |} in
   if List.is_empty discard then
     Vdom.Node.div
@@ -323,13 +326,15 @@ let view_status_top ~(st : T.state) ~(vs_comp : bool) =
 
 (* ---------- melds (right panel) with LAY HERE ---------- *)
 let view_melds_right_panel ~(melds : T.meld list) ~(on_layoff : int -> unit Ui_effect.t) =
+  (* made width:100% and added mobile-full class from our global style *)
   let outer_css = {|
-    min-width:230px;
     background:#111;
     border:1px solid #333;
     border-radius:8px;
     padding:10px 12px;
     align-self:flex-start;
+    max-width:360px;
+    width:100%;
   |} in
   let title_css = {|
     margin:0 0 6px 0;
@@ -373,7 +378,7 @@ let view_melds_right_panel ~(melds : T.meld list) ~(on_layoff : int -> unit Ui_e
             ])
   in
   Vdom.Node.div
-    ~attrs:[ style outer_css ]
+    ~attrs:[ style outer_css; Vdom.Attr.class_ "mobile-full" ]
     ([ Vdom.Node.h3 ~attrs:[ style title_css ]
          [ Vdom.Node.text "Melds (click LAY HERE to add 1 selected card)" ] ]
      @ body)
@@ -449,7 +454,6 @@ let discarded_from_last_move (s : string) : string =
 let component graph =
   let rng = Random.State.make_self_init () in
 
-  (* add winner_msg: string option *)
   let state =
     Bonsai.state
       ( `Intro
@@ -489,6 +493,84 @@ let component graph =
           , undo_allowed'
           , winner_msg'
           )
+      in
+
+      let rec maybe_reshuffle_or_stalemate
+          ~(screen : [> `Intro ])
+          ~(vs_comp : bool)
+          ~(hist : (T.state * bool * string array) list)
+          ~(last_moves : string array)
+          ~(set_all_full :
+              screen':[> `Intro ] ->
+              vs_comp':bool ->
+              st':T.state ->
+              selected':int list ->
+              hist':(T.state * bool * string array) list ->
+              popup':bool ->
+              last_draw_multi':bool ->
+              last_moves':string array ->
+              undo_allowed':bool ->
+              winner_msg':string option ->
+              unit Ui_effect.t)
+          (st' : T.state)
+        : T.state option
+        =
+        if not (List.is_empty st'.deck) then
+          Some st'
+        else (
+          incr deck_depletion_count;
+          if !deck_depletion_count = 1 then (
+            let discard_cards = st'.discard in
+            if List.is_empty discard_cards then
+              Some { st' with deck = [] }
+            else
+              let rng = Random.State.make_self_init () in
+              let new_deck = shuffle_with_state rng discard_cards in
+              Some { st' with deck = new_deck; discard = [] }
+          ) else (
+            deck_depletion_count := 0;
+            let scores' = Array.copy st'.scores in
+            let p0_hand = st'.players.(0).hand in
+            let p1_hand = st'.players.(1).hand in
+            let p0_pen = penalty_of_hand p0_hand in
+            let p1_pen = penalty_of_hand p1_hand in
+            scores'.(0) <- Int.max 0 (scores'.(0) - p0_pen);
+            scores'.(1) <- Int.max 0 (scores'.(1) - p1_pen);
+
+            let p0_name = st'.players.(0).name in
+            let p1_name = st'.players.(1).name in
+
+            let msg =
+              if scores'.(0) > scores'.(1) then
+                Printf.sprintf
+                  "Stalemate. %s wins! %s: %d | %s: %d"
+                  p0_name p0_name scores'.(0) p1_name scores'.(1)
+              else if scores'.(1) > scores'.(0) then
+                Printf.sprintf
+                  "Stalemate. %s wins! %s: %d | %s: %d"
+                  p1_name p0_name scores'.(0) p1_name scores'.(1)
+              else
+                Printf.sprintf
+                  "Stalemate. Tie! %s: %d | %s: %d"
+                  p0_name scores'.(0) p1_name scores'.(1)
+            in
+
+            let _ =
+              set_all_full
+                ~screen':screen
+                ~vs_comp':vs_comp
+                ~st':{ st' with scores = scores' }
+                ~selected':[]
+                ~hist':hist
+                ~popup':false
+                ~last_draw_multi':false
+                ~last_moves':last_moves
+                ~undo_allowed':false
+                ~winner_msg':(Some msg)
+            in
+            None
+          )
+        )
       in
 
       let set_vs b =
@@ -554,92 +636,122 @@ let component graph =
 
       (* ===== AI one-step ===== *)
       let ai_step_once
+          ~(screen : [> `Intro ])
+          ~(vs_comp : bool)
+          ~(hist : (T.state * bool * string array) list)
+          ~(last_moves : string array)
+          ~(set_all_full :
+              screen':[> `Intro ] ->
+              vs_comp':bool ->
+              st':T.state ->
+              selected':int list ->
+              hist':(T.state * bool * string array) list ->
+              popup':bool ->
+              last_draw_multi':bool ->
+              last_moves':string array ->
+              undo_allowed':bool ->
+              winner_msg':string option ->
+              unit Ui_effect.t)
           (st_ai : T.state)
         : (T.state * string option * T.card list option) option
         =
         match st_ai.T.phase with
         | T.Draw ->
-          let discard_nonempty = not (List.is_empty st_ai.T.discard) in
-          let coin = Random.State.int rng 2 in
-          let try_deck () =
-            match E.draw ~source:T.FromDeck st_ai with
-            | Ok st' | End_round st' -> Some (st', Some "Drew: Deck", None)
-            | Error _ -> None
-          in
-          let try_discard () =
-            match st_ai.T.discard with
-            | top :: _ ->
-              (match E.draw ~source:T.FromDiscard st_ai with
-               | Ok st' | End_round st' ->
-                 let msg =
-                   Printf.sprintf "Drew: Discard (top) %s" (string_of_card top)
-                 in
-                 Some (st', Some msg, None)
-               | Error _ -> None)
-            | [] -> None
-          in
-          if coin = 0 then
-            match try_deck () with
-            | Some r -> Some r
-            | None ->
-              if discard_nonempty then try_discard () else None
-          else
-          if discard_nonempty then
-            match try_discard () with
-            | Some r -> Some r
-            | None -> try_deck ()
-          else
-            try_deck ()
-        | T.Play ->
-          let p = st_ai.players.(st_ai.current) in
-          let rec combinations_k k xs =
-            if k = 0 then [ [] ]
-            else
-              match xs with
-              | [] -> []
-              | y :: ys ->
-                let with_y =
-                  List.map (combinations_k (k - 1) ys) ~f:(fun rest -> y :: rest)
-                in
-                let without = combinations_k k ys in
-                with_y @ without
-          in
-          let all_3plus hand =
-            let n = List.length hand in
-            List.concat_map (List.range 3 (n + 1)) ~f:(fun k ->
-                combinations_k k hand)
-          in
-          let combos = all_3plus p.hand in
-          let rec try_melds = function
-            | [] -> None
-            | cs :: rest ->
-              (match E.play ~action:(T.Make_set cs) st_ai with
-               | Ok st' | End_round st' -> Some (st', None, Some cs)
-               | Error _ ->
-                 (match E.play ~action:(T.Make_run cs) st_ai with
-                  | Ok st' | End_round st' -> Some (st', None, Some cs)
-                  | Error _ -> try_melds rest))
-          in
-          (match try_melds combos with
-           | Some r -> Some r
-           | None ->
-             (match E.play ~action:T.Skip_to_discard st_ai with
-              | Ok st' | End_round st' -> Some (st', None, None)
-              | Error _ -> None))
-        | T.Discard ->
-          let p = st_ai.players.(st_ai.current) in
-          (match p.hand with
-           | [] -> None
-           | hand ->
-             let idx = Random.State.int rng (List.length hand) in
-             let card = List.nth_exn hand idx in
-             (match E.discard ~action:(T.Discard_card card) st_ai with
+            let discard_nonempty = not (List.is_empty st_ai.T.discard) in
+            let coin = Random.State.int rng 2 in
+
+            let try_deck () =
+              match E.draw ~source:T.FromDeck st_ai with
               | Ok st' | End_round st' ->
-                let msg = Printf.sprintf "Discarded: %s" (string_of_card card) in
-                Some (st', Some msg, None)
-              | Error _ -> None))
+                (match maybe_reshuffle_or_stalemate
+                         ~screen
+                         ~vs_comp
+                         ~hist
+                         ~last_moves
+                         ~set_all_full
+                         st'
+                 with
+                 | None -> None
+                 | Some st_after ->
+                   Some (st_after, Some "Drew: Deck", None))
+              | Error _ -> None
+            in
+
+            let try_discard () =
+              match st_ai.T.discard with
+              | top :: _ ->
+                (match E.draw ~source:T.FromDiscard st_ai with
+                 | Ok st' | End_round st' ->
+                   let msg =
+                     Printf.sprintf "Drew: Discard (top) %s" (string_of_card top)
+                   in
+                   Some (st', Some msg, None)
+                 | Error _ -> None)
+              | [] -> None
+            in
+
+            if coin = 0 then
+              match try_deck () with
+              | Some r -> Some r
+              | None ->
+                if discard_nonempty then try_discard () else None
+            else
+              if discard_nonempty then
+                match try_discard () with
+                | Some r -> Some r
+                | None -> try_deck ()
+              else
+                try_deck ()
+        | T.Play ->
+            let p = st_ai.players.(st_ai.current) in
+            let rec combinations_k k xs =
+              if k = 0 then [ [] ]
+              else
+                match xs with
+                | [] -> []
+                | y :: ys ->
+                  let with_y =
+                    List.map (combinations_k (k - 1) ys) ~f:(fun rest -> y :: rest)
+                  in
+                  let without = combinations_k k ys in
+                  with_y @ without
+            in
+            let all_3plus hand =
+              let n = List.length hand in
+              List.concat_map (List.range 3 (n + 1)) ~f:(fun k ->
+                  combinations_k k hand)
+            in
+            let combos = all_3plus p.hand in
+            let rec try_melds = function
+              | [] -> None
+              | cs :: rest ->
+                (match E.play ~action:(T.Make_set cs) st_ai with
+                 | Ok st' | End_round st' -> Some (st', None, Some cs)
+                 | Error _ ->
+                   (match E.play ~action:(T.Make_run cs) st_ai with
+                    | Ok st' | End_round st' -> Some (st', None, Some cs)
+                    | Error _ -> try_melds rest))
+            in
+            (match try_melds combos with
+             | Some r -> Some r
+             | None ->
+               (match E.play ~action:T.Skip_to_discard st_ai with
+                | Ok st' | End_round st' -> Some (st', None, None)
+                | Error _ -> None))
+        | T.Discard ->
+            let p = st_ai.players.(st_ai.current) in
+            (match p.hand with
+             | [] -> None
+             | hand ->
+               let idx = Random.State.int rng (List.length hand) in
+               let card = List.nth_exn hand idx in
+               (match E.discard ~action:(T.Discard_card card) st_ai with
+                | Ok st' | End_round st' ->
+                  let msg = Printf.sprintf "Discarded: %s" (string_of_card card) in
+                  Some (st', Some msg, None)
+                | Error _ -> None))
         | T.EndCheck ->
-          None
+            None
       in
 
       (* AI driver: do AI until human again *)
@@ -669,7 +781,14 @@ let component graph =
              | Error _ ->
                ({ st_ai with current = 0; phase = T.Draw }, lm_ai))
           | T.Draw | T.Play | T.Discard ->
-            (match ai_step_once st_ai with
+            (match ai_step_once
+                     ~screen
+                     ~vs_comp
+                     ~hist:[]
+                     ~last_moves:lm_ai
+                     ~set_all_full
+                     st_ai
+             with
              | Some (st', maybe_msg, maybe_melded) ->
                let st' =
                  match maybe_melded with
@@ -694,10 +813,7 @@ let component graph =
                in
                advance_ai_turn st' lm'
              | None ->
-               (match E.endcheck st_ai with
-                | Ok st' | End_round st' -> advance_ai_turn st' lm_ai
-                | Error _ ->
-                  ({ st_ai with current = 0; phase = T.Draw }, lm_ai)))
+               (st_ai, lm_ai))
       in
 
       (* ---------- end-of-round / winner ---------- *)
@@ -717,7 +833,6 @@ let component graph =
             st_after.players.(1).name
             scores'.(1)
         in
-        (* freeze: no undo, keep hist as-is *)
         set_all_full
           ~screen':screen
           ~vs_comp':vs_comp
@@ -731,18 +846,16 @@ let component graph =
           ~winner_msg':(Some msg)
       in
 
-      (* ---------- apply_and_maybe_ai: push deep snapshot, then maybe AI ---------- *)
+      (* ---------- apply_and_maybe_ai ---------- *)
       let apply_and_maybe_ai
           ?(last_multi = false)
           ?(last_moves_opt = None)
           ?(undo_allowed_opt = None)
           (st_after : T.state)
         =
-        (* snapshot BEFORE change *)
         let hist' =
           (copy_state st, last_draw_multi, Array.copy last_moves) :: hist
         in
-        (* maybe AI *)
         let ai_ran, final_state, final_last_moves =
           if vs_comp && st_after.T.current = 1 then
             let (ai_st, ai_lm) = advance_ai_turn st_after last_moves in
@@ -751,7 +864,6 @@ let component graph =
             (false, st_after,
              Option.value last_moves_opt ~default:last_moves)
         in
-        (* did someone go out after this? *)
         let p0_empty = List.is_empty final_state.players.(0).hand in
         let p1_empty = List.is_empty final_state.players.(1).hand in
         if p0_empty && not p1_empty then
@@ -777,7 +889,7 @@ let component graph =
             ~winner_msg':None
       in
 
-      (* ---------- UNDO: pop full snapshot ---------- *)
+      (* ---------- UNDO ---------- *)
       let on_back _ev =
         if not undo_allowed then Ui_effect.Ignore
         else
@@ -817,7 +929,6 @@ let component graph =
 
       (* ====== CLICK HANDLERS ====== *)
 
-      (* DRAW: deck *)
       let on_click_deck _ev =
         if Poly.(st.phase <> T.Draw) || not (human_turn ()) then
           Ui_effect.Ignore
@@ -826,46 +937,55 @@ let component graph =
             (copy_state st, last_draw_multi, Array.copy last_moves) :: hist
           in
           match E.draw ~source:T.FromDeck st with
-          | Ok st' | End_round st' ->
-            let prev = last_moves.(st.current) in
-            let lm =
-              update_last_move_for_player st.current
-                (if String.equal prev "—" then "Drew: Deck"
-                 else prev ^ " | Drew: Deck")
-            in
-            let undo_allowed' = false in
-            let ai_ran, final_state, final_last_moves =
-              if vs_comp && st'.T.current = 1 then
-                let (ai_st, ai_lm) = advance_ai_turn st' last_moves in
-                (true, ai_st, ai_lm)
-              else
-                (false, st', lm)
-            in
-            (* after AI, check if someone went out *)
-            let p0_empty = List.is_empty final_state.players.(0).hand in
-            let p1_empty = List.is_empty final_state.players.(1).hand in
-            if p0_empty && not p1_empty then
-              end_round_with_winner ~winner_idx:0 final_state
-            else if p1_empty && not p0_empty then
-              end_round_with_winner ~winner_idx:1 final_state
-            else
-              let lm' = if ai_ran then final_last_moves else lm in
-              set_all_full
-                ~screen':screen
-                ~vs_comp':vs_comp
-                ~st':final_state
-                ~selected':[]
-                ~hist':hist'
-                ~popup':false
-                ~last_draw_multi':false
-                ~last_moves':lm'
-                ~undo_allowed':undo_allowed'
-                ~winner_msg':None
           | Error _ ->
             Ui_effect.Ignore
+          | Ok st' | End_round st' ->
+            (match maybe_reshuffle_or_stalemate
+                     ~screen
+                     ~vs_comp
+                     ~hist:hist'
+                     ~last_moves
+                     ~set_all_full
+                     st'
+             with
+             | None ->
+               Ui_effect.Ignore
+             | Some st_after ->
+               let prev = last_moves.(st.current) in
+               let lm =
+                 update_last_move_for_player st.current
+                   (if String.equal prev "—" then "Drew: Deck"
+                    else prev ^ " | Drew: Deck")
+               in
+               let undo_allowed' = false in
+               let ai_ran, final_state, final_last_moves =
+                 if vs_comp && st_after.T.current = 1 then
+                   let (ai_st, ai_lm) = advance_ai_turn st_after last_moves in
+                   (true, ai_st, ai_lm)
+                 else
+                   (false, st_after, lm)
+               in
+               let p0_empty = List.is_empty final_state.players.(0).hand in
+               let p1_empty = List.is_empty final_state.players.(1).hand in
+               if p0_empty && not p1_empty then
+                 end_round_with_winner ~winner_idx:0 final_state
+               else if p1_empty && not p0_empty then
+                 end_round_with_winner ~winner_idx:1 final_state
+               else
+                 let lm' = if ai_ran then final_last_moves else lm in
+                 set_all_full
+                   ~screen':screen
+                   ~vs_comp':vs_comp
+                   ~st':final_state
+                   ~selected':[]
+                   ~hist':hist'
+                   ~popup':false
+                   ~last_draw_multi':false
+                   ~last_moves':lm'
+                   ~undo_allowed':undo_allowed'
+                   ~winner_msg':None)
       in
 
-      (* DRAW: discard (top) *)
       let on_click_discard_stack _ev =
         if Poly.(st.phase <> T.Draw) || not (human_turn ()) then
           Ui_effect.Ignore
@@ -914,7 +1034,6 @@ let component graph =
             Ui_effect.Ignore
       in
 
-      (* DRAW: discard (multi) *)
       let on_click_discard_bar i_from_top _ev =
         if Poly.(st.phase <> T.Draw) || not (human_turn ()) then
           Ui_effect.Ignore
@@ -963,7 +1082,6 @@ let component graph =
             Ui_effect.Ignore
       in
 
-      (* SORT *)
       let on_sort_hand _ev =
         if not (human_turn ()) then Ui_effect.Ignore
         else
@@ -978,7 +1096,6 @@ let component graph =
             st'
       in
 
-      (* HUMAN: lay off 1 selected card onto meld i *)
       let on_layoff ~meld_idx =
         if Poly.(st.phase <> T.Play) || not (human_turn ()) then
           Ui_effect.Ignore
@@ -999,7 +1116,6 @@ let component graph =
           | _ -> Ui_effect.Ignore
       in
 
-      (* HUMAN: make meld from selected cards *)
       let on_meld_selected _ev =
         if Poly.(st.phase <> T.Play) || not (human_turn ()) then
           Ui_effect.Ignore
@@ -1036,7 +1152,6 @@ let component graph =
              | None -> Ui_effect.Ignore)
       in
 
-      (* HUMAN: discard from Play *)
       let on_discard_from_play _ev =
         if Poly.(st.phase <> T.Play) || not (human_turn ()) then
           Ui_effect.Ignore
@@ -1062,15 +1177,12 @@ let component graph =
                             Printf.sprintf "Discarded: %s"
                               (string_of_card card))
                      in
-                     (* check if this discard emptied hand *)
                      let hand_after = st_after_disc.players.(st_after_disc.current).hand in
                      if List.is_empty hand_after then
-                       (* current player wins right now *)
                        end_round_with_winner
                          ~winner_idx:st_after_disc.current
                          st_after_disc
                      else if not vs_comp then
-                       (* pass & play: go to endcheck *)
                        apply_and_maybe_ai
                          ~last_multi:false
                          ~last_moves_opt:(Some lm)
@@ -1095,7 +1207,6 @@ let component graph =
              | _ -> Ui_effect.Ignore)
       in
 
-      (* DISCARD phase finish (pass & play) *)
       let on_discard_phase_finish _ev =
         if not vs_comp then
           apply_and_maybe_ai
@@ -1112,7 +1223,6 @@ let component graph =
           | Error _ -> Ui_effect.Ignore
       in
 
-      (* END CHECK *)
       let on_end_check _ev =
         match E.endcheck st with
         | Ok st' | End_round st' ->
@@ -1236,15 +1346,31 @@ let component graph =
           display:flex;flex-direction:column;min-height:100vh;
           background-color:#000;color:white;font-family:sans-serif;
         |} in
+        (* new responsive middle layout *)
         let middle_wrap_css = {|
-          flex-grow:1;display:flex;flex-direction:row;
-          align-items:flex-start;justify-content:center;
-          background-color:#0f0f0f;color:white;padding:20px;gap:16px;
+          flex-grow:1;
+          display:flex;
+          flex-direction:row;
+          align-items:flex-start;
+          justify-content:center;
+          background-color:#0f0f0f;
+          color:white;
+          padding:12px;
+          gap:12px;
         |} in
         let table_css = {|
-          display:flex;flex-direction:row;align-items:flex-start;justify-content:center;
-          gap:40px;padding:20px;background-color:#1a1a1a;border:2px solid #333;
-          border-radius:8px;box-shadow:0px 4px 10px rgba(0,0,0,0.6);
+          display:flex;
+          flex-direction:row;
+          align-items:flex-start;
+          justify-content:center;
+          gap:14px;
+          padding:14px;
+          background-color:#1a1a1a;
+          border:2px solid #333;
+          border-radius:8px;
+          box-shadow:0px 4px 10px rgba(0,0,0,0.6);
+          max-width:420px;
+          width:100%;
         |} in
         let bottom_css = {|
           background-color:#000;border-top:2px solid #333;padding:10px;
@@ -1348,7 +1474,6 @@ let component graph =
         let active_hand = st.players.(st.current).hand in
         let active_name = st.players.(st.current).name in
 
-        (* top: status + opponent/computer panel (swapped in) *)
         let opponent_idx = 1 - st.current in
         let opponent = st.players.(opponent_idx) in
         let opp_last_move = last_moves.(opponent_idx) in
@@ -1370,11 +1495,13 @@ let component graph =
             ~attrs:[ style outer_css ]
             [ Vdom.Node.h3
                 ~attrs:[ style "margin:0;font-size:14px;font-weight:700;" ]
-                [ Vdom.Node.text opponent.name ]
+                [ Vdom.Node.text
+                  (Printf.sprintf "%s (%d cards)" opponent.name (List.length opponent.hand))
+                ]
             ; (if vs_comp then
                  Vdom.Node.p
                    ~attrs:[ style "margin:0;font-size:12px;color:#ddd;" ]
-                   [ Vdom.Node.text "Computer turn info" ]
+                   [ Vdom.Node.text "_____________________" ]
                else
                  Vdom.Node.none)
             ; Vdom.Node.p
@@ -1393,26 +1520,35 @@ let component graph =
             ]
         in
 
-        (* middle center: deck + discard + right melds *)
         let middle_area =
           Vdom.Node.div
-            ~attrs:[ style middle_wrap_css ]
-            [ Vdom.Node.div
-                ~attrs:[ style "display:flex;flex-direction:row;justify-content:center;align-items:flex-start;gap:40px;" ]
-                [ Vdom.Node.div
-                    ~attrs:[ style table_css ]
-                    [ view_facedown_card
+            ~attrs:[
+              style middle_wrap_css;
+              Vdom.Attr.class_ "mobile-column mobile-hide-scroll"
+            ]
+            [
+              Vdom.Node.div
+                ~attrs:[
+                  style "display:flex;flex-direction:row;justify-content:center;align-items:flex-start;gap:14px;width:100%;";
+                  Vdom.Attr.class_ "mobile-center"
+                ]
+                [
+                  Vdom.Node.div
+                    ~attrs:[ style table_css; Vdom.Attr.class_ "mobile-full" ]
+                    [
+                      view_facedown_card
                         ~count:(List.length st.deck)
-                        ~on_click:on_click_deck
-                    ; view_discard_pile
+                        ~on_click:on_click_deck;
+                      view_discard_pile
                         ~discard:st.discard
                         ~on_click_stack:on_click_discard_stack
-                        ~on_click_bar:on_click_discard_bar
+                        ~on_click_bar:on_click_discard_bar;
                     ]
-                ]
-            ; view_melds_right_panel
+                ];
+
+              view_melds_right_panel
                 ~melds:st.melds
-                ~on_layoff:(fun idx -> on_layoff ~meld_idx:idx)
+                ~on_layoff:(fun idx -> on_layoff ~meld_idx:idx);
             ]
         in
 
@@ -1481,7 +1617,13 @@ let component graph =
 
         Vdom.Node.div
           ~attrs:[ style screen_css ]
-          [ top_area; middle_area; bottom_area; undo_button; modal; winner_modal ]
+          [ top_area
+          ; middle_area
+          ; bottom_area
+          ; undo_button
+          ; modal
+          ; winner_modal
+          ]
     )
 
 let () =
