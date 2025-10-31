@@ -409,15 +409,72 @@ let view_modal ~message ~on_close =
     ]
 
 let tutorial_text : string = {|
-Deck: Standard 52-card deck
-Players: 2
-Deal: 7 cards to each player
+Here are the rules for this version of Rummy.
 
-Goal
-Earn the most amount of points by making melds. A game ends once a player discards their last card.
+──────────────────────────────
+******GOAL OF THE GAME******
+──────────────────────────────
+Your goal is to earn the most points by forming “melds” valid combinations of cards,
+and reducing the total value of unmelded cards  left in your hand.
 
-Turn Structure
-On your turn, you DRAW → PLAY → DISMISS.
+A game ends when one player uses all their cards, either by melding or discarding their last one.
+
+──────────────────────────────
+******CARD VALUES******
+──────────────────────────────
+Each card has a point value:
+  • 2 through 9 → 5 points  
+  • 10, Jack, Queen, King → 10 points  
+  • Ace → 15 points  
+
+These points are used both for scoring melds and for penalties at the end of the round.
+
+──────────────────────────────
+******MELDS******
+──────────────────────────────
+A “meld” is a group of cards that forms either a **set** or a **run**:
+
+  • SET → 3 or more cards of the same rank (e.g. 7♠ 7♦ 7♣)  
+  • RUN → 3 or more consecutive cards of the same suit (e.g. 5♥ 6♥ 7♥)
+
+You can also add (lay off) cards onto existing melds if they fit logically.  
+For example, if a meld of 7♠ 8♠ 9♠ is already on the table, you can lay off 6♠ or 10♠.
+
+──────────────────────────────
+******TURN STRUCTURE******
+──────────────────────────────
+Each turn has three phases:
+
+1) **DRAW**  
+   Choose one:
+     -Draw the top card from the **Deck**  
+     -OR draw the top card from the **Discard Pile**
+     -OR draw MULTIPLE cards from the **Discard Pile**  If you take multiple cards from the discard pile, you must use the *bottom-most* one in a meld 		before you can discard.
+
+2) **PLAY**  
+   - Make a **meld** with selected cards from your hand (choose 3+ and click “MELD THESE CARDS”),  
+   - Add a single card onto an existing meld by clicking “LAY HERE,”  
+   - Sort your hand, or  
+   - When done, click “DISCARD” to move to the next phase.
+
+3) **DISCARD**  
+   - Choose one card to discard, ending your turn.
+   - The turn passes to the other player (or the computer).
+
+──────────────────────────────
+******END OF GAME******
+──────────────────────────────
+The game ends when:
+  - A player discards their final card (a “rummy”), or  
+  - The deck runs out twice in one game.
+
+Each player’s total score is then updated:
+  - Points for all melded cards are added.
+
+──────────────────────────────
+******WINNING******
+──────────────────────────────
+The player with the higher score at the end of the final round wins the game
 |}
 
 (* --- last-move parsing --- *)
