@@ -1357,6 +1357,7 @@ let component graph =
           color:white;
           padding:12px;
           gap:12px;
+          overflow-x:auto;
         |} in
         let table_css = {|
           display:flex;
