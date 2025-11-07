@@ -198,8 +198,20 @@ let view_discard_pile
     Vdom.Node.div
       ~attrs:[ style outer_css ]
       [ Vdom.Node.div
-          ~attrs:[ style "width:120px;height:100px;display:flex;align-items:center;justify-content:center;border:2px dashed #555;border-radius:6px;color:#777;" ]
-          [ Vdom.Node.text "Discard (empty)" ] ]
+    ~attrs:[ style {|
+      width:120px;
+      height:100px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      border:2px dashed #555;
+      border-radius:6px;
+      color:#777;
+      text-align:center;
+      font-size:13px;
+      line-height:100px;
+    |} ]
+    [ Vdom.Node.text "Discard (empty)" ] ]
   else
     let n = List.length discard in
     let top_card = List.hd_exn discard in
@@ -1360,7 +1372,6 @@ let component graph =
                   ~attrs:[ Vdom.Attr.on_click (start_game true); style btn_css ]
                   [ Vdom.Node.text "Play vs Computer" ]
               ]
-          ; Vdom.Node.hr ()
           ; Vdom.Node.button
               ~attrs:[ Vdom.Attr.on_click go_tutorial; style btn_css ]
               [ Vdom.Node.text "Tutorial" ]
@@ -1371,10 +1382,20 @@ let component graph =
           font-family:sans-serif;color:white;background:#000;min-height:100vh;
           padding:20px;display:flex;flex-direction:column;align-items:center;gap:16px;
         |} in
-        let text_css = {|
-          white-space:pre-wrap;background:#111;border:1px solid #333;border-radius:8px;
-          padding:14px;max-width:900px;line-height:1.35;
-        |} in
+          let text_css = {|
+    white-space:pre-wrap;
+    background:#111;
+    border:1px solid #333;
+    border-radius:8px;
+    padding:14px;
+    max-width:900px;
+    width:100%;
+    line-height:1.35;
+    word-break:break-word;
+    overflow-wrap:anywhere;
+    max-height:80vh;
+    overflow-y:auto;
+  |} in
         let back _ev =
           set_all_full
             ~screen':`Intro
