@@ -424,69 +424,84 @@ let tutorial_text : string = {|
 Here are the rules for this version of Rummy.
 
 ──────────────────────────────
-******GOAL OF THE GAME******
+GOAL OF THE GAME
 ──────────────────────────────
-Your goal is to earn the most points by forming “melds” valid combinations of cards,
-and reducing the total value of unmelded cards  left in your hand.
+Your goal is to earn the most points by forming “melds” — valid combinations of cards —
+and reducing the total value of unmelded cards left in your hand.
 
 A game ends when one player uses all their cards, either by melding or discarding their last one.
 
+In this version, if a player uses all their cards without needing to discard, that also ends the round — this is called a “rummy without a discard.”
+
 ──────────────────────────────
-******CARD VALUES******
+CARD VALUES
 ──────────────────────────────
 Each card has a point value:
-  • 2 through 9 → 5 points  
-  • 10, Jack, Queen, King → 10 points  
-  • Ace → 15 points  
+• 2 through 9 → 5 points
+• 10, Jack, Queen, King → 10 points
+• Ace → 15 points
 
 These points are used both for scoring melds and for penalties at the end of the round.
 
-──────────────────────────────
-******MELDS******
-──────────────────────────────
-A “meld” is a group of cards that forms either a **set** or a **run**:
+Aces are always high in runs (so Q–K–A is valid, but A–2–3 is not).
 
-  • SET → 3 or more cards of the same rank (e.g. 7♠ 7♦ 7♣)  
-  • RUN → 3 or more consecutive cards of the same suit (e.g. 5♥ 6♥ 7♥)
+──────────────────────────────
+MELDS
+──────────────────────────────
+A “meld” is a group of cards that forms either a set or a run:
 
-You can also add (lay off) cards onto existing melds if they fit logically.  
+• SET → 3 or more cards of the same rank (e.g. 7♠ 7♦ 7♣)
+• RUN → 3 or more consecutive cards of the same suit (e.g. 5♥ 6♥ 7♥)
+
+You can also add (lay off) cards onto existing melds if they fit logically.
 For example, if a meld of 7♠ 8♠ 9♠ is already on the table, you can lay off 6♠ or 10♠.
 
+You can only lay off one card at a time by clicking “LAY HERE.”
+Aces cannot be placed below a 2 in a run, since they are treated as high only.
+
 ──────────────────────────────
-******TURN STRUCTURE******
+TURN STRUCTURE
 ──────────────────────────────
 Each turn has three phases:
+	1.	DRAW
+Choose one:
+-Draw the top card from the Deck
+-OR draw the top card from the Discard Pile
+-OR draw MULTIPLE cards from the Discard Pile
+If you take multiple cards from the discard pile, you must use the bottom-most one in a meld before you can discard.
+If you forget to use the bottom-most card, a reminder will appear and you will not be able to discard until you do.
+	2.	PLAY
+	•	Make a meld with selected cards from your hand (choose 3+ and click “MELD THESE CARDS”),
+	•	Add a single card onto an existing meld by clicking “LAY HERE,”
+	•	Sort your hand, or
+	•	When done, click “DISCARD” to move to the next phase.
+	3.	DISCARD
+	•	Choose one card to discard, ending your turn.
+	•	The turn passes to the other player (or the computer).
 
-1) **DRAW**  
-   Choose one:
-     -Draw the top card from the **Deck**  
-     -OR draw the top card from the **Discard Pile**
-     -OR draw MULTIPLE cards from the **Discard Pile**  If you take multiple cards from the discard pile, you must use the *bottom-most* one in a meld 		before you can discard.
-
-2) **PLAY**  
-   - Make a **meld** with selected cards from your hand (choose 3+ and click “MELD THESE CARDS”),  
-   - Add a single card onto an existing meld by clicking “LAY HERE,”  
-   - Sort your hand, or  
-   - When done, click “DISCARD” to move to the next phase.
-
-3) **DISCARD**  
-   - Choose one card to discard, ending your turn.
-   - The turn passes to the other player (or the computer).
+You can undo your last action during a turn using the “UNDO” button (except immediately after drawing a card).
 
 ──────────────────────────────
-******END OF GAME******
+END OF GAME
 ──────────────────────────────
 The game ends when:
-  - A player discards their final card (a “rummy”), or  
-  - The deck runs out twice in one game.
+	•	A player discards their final card (a “rummy”), or
+	•	A player goes out without a discard (“rummy without a discard”), or
+	•	The deck runs out twice in one game.
 
 Each player’s total score is then updated:
-  - Points for all melded cards are added.
+	•	Points for all melded cards are added.
+	•	Points for remaining unmelded cards (deadwood) are subtracted.
+
+If the deck runs out twice, the game ends in a stalemate. Both players lose points equal to the value of their remaining unmelded cards.
 
 ──────────────────────────────
-******WINNING******
+WINNING
 ──────────────────────────────
-The player with the higher score at the end of the final round wins the game
+The player with the higher score at the end of the final round wins the game.
+
+In a stalemate, the player with the higher remaining score still wins.
+A “winner” message will appear at the end of the round, showing both players’ point totals.
 |}
 
 (* --- last-move parsing --- *)
