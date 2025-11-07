@@ -1483,26 +1483,24 @@ let component graph =
             let human = human_turn () in
             if human then
               let hand_is_empty = List.is_empty st.players.(st.current).hand in
-              let endturn_btn =
-                if hand_is_empty then
-                  Vdom.Node.button
-                    ~attrs:[ Vdom.Attr.on_click (fun _ ->
-                                if not vs_comp then
-                                  let lm =
-                                    update_last_move_for_player st.current
-                                      "Rummy without a discard"
-                                  in
-                                  apply_and_maybe_ai
-                                    ~last_multi:false
-                                    ~last_moves_opt:(Some lm)
-                                    ~undo_allowed_opt:(Some true)
-                                    { st with phase = T.EndCheck }
-                                else
-                                  on_end_check ());
-                            style btn_small_css ]
-                    [ Vdom.Node.text "END TURN / RUMMY WITHOUT A DISCARD" ]
-                else
-                  Vdom.Node.none
+                  let endturn_btn =
+      if hand_is_empty then
+        Vdom.Node.button
+          ~attrs:[
+            Vdom.Attr.on_click (fun _ ->
+              (* optional: record what happened in last-moves *)
+              let _ =
+                update_last_move_for_player st.current
+                  "Rummy without a discard"
+              in
+              (* now actually finish the round and subtract the other hand *)
+              end_round_with_winner ~winner_idx:st.current st
+            );
+            style btn_small_css
+          ]
+          [ Vdom.Node.text "END TURN / RUMMY WITHOUT A DISCARD" ]
+      else
+        Vdom.Node.none
               in
               Vdom.Node.div
                 ~attrs:[ style controls_row_css ]
