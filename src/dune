@@ -1,13 +1,6 @@
 (library
  (name rummy_engine)
- (modules types rules engine setup ai)
- (libraries core)
- (preprocess (pps ppx_jane))
-)
-
-(executable
- (name main)
- (modules main)
- (libraries rummy_engine core)
- (preprocess (pps ppx_jane))
+ (modules types rules engine setup ai firebase_config http_client firebase_client)
+ (libraries core yojson async_kernel)
+ (preprocess (pps ppx_jane ppx_yojson_conv))
 )

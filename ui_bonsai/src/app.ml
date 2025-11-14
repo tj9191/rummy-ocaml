@@ -10,18 +10,19 @@ module E        = Rummy_engine.Engine
 module Setup    = RE.Setup
 module Firebase = RE.Firebase_client
 
-(* All online players share this Firestore document as the "lobby" *)
-let default_lobby_id = "n9HZyYuqk9cUnEvEDcz5"
+let online_mode = ref false
+let my_index    = ref 0
+let default_lobby_id = "n9HZyYuqk9cUnEvEDcz5"  (* or whatever id you want *)
 
-(* Push the current state to Firestore for the default lobby *)
 let push_state_effect =
   Effect.of_deferred_fun (fun (st : T.state) ->
-      Firebase.push_state ~lobby_id:default_lobby_id st)
+      Firebase.push_state ~lobby_id:default_lobby_id st
+    )
 
-(* Pull the latest state from Firestore for the default lobby *)
 let pull_state_effect =
   Effect.of_deferred_fun (fun () ->
-      Firebase.pull_state ~lobby_id:default_lobby_id ())
+      Firebase.pull_state ~lobby_id:default_lobby_id ()
+    )
 
 let () = Random.self_init ()
 let deck_depletion_count = ref 0
@@ -1025,17 +1026,15 @@ let component graph =
             Ui_effect.Ignore
       in
 
-            let human_turn () =
-        (* Online mode: only the local player can act.
-           Local mode: existing behavior. *)
-        match lobby_id_opt with
-        | Some _ ->
-            st.current = my_player_index
-        | None ->
-            if vs_comp then
-              st.current = 0
-            else
-              true
+      let human_turn () =
+        (* Online: only the local player (my_index) may act.
+           Local: old behavior. *)
+        if !online_mode then
+          st.current = !my_index
+        else if vs_comp then
+          st.current = 0
+        else
+          true
       in
       let hide_hand_now () = (not vs_comp) && Poly.(st.phase = T.EndCheck) in
 
@@ -1409,8 +1408,10 @@ let component graph =
           padding:20px;
         |} in
 
-        (* existing local modes: pass & play / vs computer *)
+        (* Local start: pass & play / vs computer *)
         let start_game vs_flag _ev =
+          online_mode := false;
+          my_index := 0;
           let st0 = initial_state ~vs_computer:vs_flag () in
           Ui_effect.Many
             [ set_vs vs_flag
@@ -1428,48 +1429,48 @@ let component graph =
             ]
         in
 
-        (* NEW: host online game (quickmatch) *)
-        let host_online _ev =
-          (* Fresh 2-player game, synced to default_lobby_id *)
+        (* Host online: Player 1 (index 0) *)
+        let host_online_game _ev =
+          online_mode := true;
+          my_index := 0;
           let st0 = initial_state ~vs_computer:false () in
-          Ui_effect.Many
-            [ set_vs false
-            ; set_all_full
-                ~screen':`Playing
-                ~vs_comp':false
-                ~st':st0
-                ~selected':[]
-                ~hist':[]
-                ~popup':false
-                ~last_draw_multi':false
-                ~last_moves':[| "—"; "—" |]
-                ~undo_allowed':true
-                ~winner_msg':None
-            ]
+          set_all_full
+            ~screen':`Playing
+            ~vs_comp':false
+            ~st':st0
+            ~selected':[]
+            ~hist':[]
+            ~popup':false
+            ~last_draw_multi':false
+            ~last_moves':[| "—"; "—" |]
+            ~undo_allowed':true
+            ~winner_msg':None
         in
 
-        (* NEW: join online game (quickmatch) *)
-        let join_online _ev =
-          Effect.bind (pull_state_effect ()) ~f:(fun remote_opt ->
-              match remote_opt with
-              | None ->
-                  (* Nothing in the cloud yet; do nothing for now *)
-                  Effect.return ()
-              | Some st_remote ->
-                  set_all_full
-                    ~screen':`Playing
-                    ~vs_comp':false
-                    ~st':st_remote
-                    ~selected':[]
-                    ~hist':[]
-                    ~popup':false
-                    ~last_draw_multi':false
-                    ~last_moves':[| "—"; "—" |]
-                    ~undo_allowed':true
-                    ~winner_msg':None
-            )
+        (* Join online: Player 2 (index 1) *)
+        let join_online_game _ev =
+          online_mode := true;
+          my_index := 1;
+          let%bind.Effect remote_opt = pull_state_effect () in
+          (match remote_opt with
+           | None ->
+               (* Rough version: if nothing in Firestore yet, just do nothing. *)
+               Effect.return ()
+           | Some st0 ->
+               set_all_full
+                 ~screen':`Playing
+                 ~vs_comp':false
+                 ~st':st0
+                 ~selected':[]
+                 ~hist':[]
+                 ~popup':false
+                 ~last_draw_multi':false
+                 ~last_moves':[| "—"; "—" |]
+                 ~undo_allowed':true
+                 ~winner_msg':None)
         in
 
+        (* Tutorial screen *)
         let go_tutorial _ev =
           set_all_full
             ~screen':`Tutorial
@@ -1490,8 +1491,6 @@ let component graph =
               ~attrs:[ style "font-size:32px;margin:0;" ]
               [ Vdom.Node.text "Rummy" ]
           ; Vdom.Node.p [ Vdom.Node.text "Choose a mode to begin:" ]
-
-          (* Local modes row *)
           ; Vdom.Node.div
               [ Vdom.Node.button
                   ~attrs:[ Vdom.Attr.on_click (start_game false); style btn_css ]
@@ -1500,22 +1499,14 @@ let component graph =
                   ~attrs:[ Vdom.Attr.on_click (start_game true); style btn_css ]
                   [ Vdom.Node.text "Play vs Computer" ]
               ]
-
-          (* NEW: online quickmatch row *)
           ; Vdom.Node.div
               [ Vdom.Node.button
-                  ~attrs:[ Vdom.Attr.on_click host_online; style btn_css ]
-                  [ Vdom.Node.text "Host Online Game" ]
+                  ~attrs:[ Vdom.Attr.on_click host_online_game; style btn_css ]
+                  [ Vdom.Node.text "Host online game" ]
               ; Vdom.Node.button
-                  ~attrs:[ Vdom.Attr.on_click join_online; style btn_css ]
-                  [ Vdom.Node.text "Join Online Game" ]
+                  ~attrs:[ Vdom.Attr.on_click join_online_game; style btn_css ]
+                  [ Vdom.Node.text "Join online game" ]
               ]
-          ; Vdom.Node.p
-              ~attrs:[ style "font-size:12px;color:#ccc;margin-top:4px;" ]
-              [ Vdom.Node.text
-                  ("Online quickmatch code: " ^ default_lobby_id)
-              ]
-
           ; Vdom.Node.button
               ~attrs:[ Vdom.Attr.on_click go_tutorial; style btn_css ]
               [ Vdom.Node.text "Tutorial" ]
