@@ -1,20 +1,36 @@
 open! Core
 open! Bonsai
 open! Bonsai_web
+open! Async_kernel
 
-module Vdom  = Virtual_dom.Vdom
-module RE    = Rummy_engine
-module T     = RE.Types
-module E     = Rummy_engine.Engine
-module Setup = Rummy_engine.Setup
+module Vdom     = Virtual_dom.Vdom
+module RE       = Rummy_engine
+module T        = RE.Types
+module E        = Rummy_engine.Engine
+module Setup    = RE.Setup
+module Firebase = RE.Firebase_client
+
+(* All online players share this Firestore document as the "lobby" *)
+let default_lobby_id = "n9HZyYuqk9cUnEvEDcz5"
+
+(* Push the current state to Firestore for the default lobby *)
+let push_state_effect =
+  Effect.of_deferred_fun (fun (st : T.state) ->
+      Firebase.push_state ~lobby_id:default_lobby_id st)
+
+(* Pull the latest state from Firestore for the default lobby *)
+let pull_state_effect =
+  Effect.of_deferred_fun (fun () ->
+      Firebase.pull_state ~lobby_id:default_lobby_id ())
 
 let () = Random.self_init ()
 let deck_depletion_count = ref 0
 
+
 (* ---------- helpers ---------- *)
 
-let string_of_card (c : T.card) = RE.Types.string_of_card c
 
+let string_of_card (c : T.card) = RE.Types.string_of_card c
 let string_of_phase = function
   | T.Draw     -> "Draw"
   | T.Play     -> "Play"
@@ -198,20 +214,20 @@ let view_discard_pile
     Vdom.Node.div
       ~attrs:[ style outer_css ]
       [ Vdom.Node.div
-    ~attrs:[ style {|
-      width:120px;
-      height:100px;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      border:2px dashed #555;
-      border-radius:6px;
-      color:#777;
-      text-align:center;
-      font-size:13px;
-      line-height:100px;
-    |} ]
-    [ Vdom.Node.text "Discard (empty)" ] ]
+          ~attrs:[ style {|
+            width:120px;
+            height:100px;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            border:2px dashed #555;
+            border-radius:6px;
+            color:#777;
+            text-align:center;
+            font-size:13px;
+            line-height:100px;
+          |} ]
+          [ Vdom.Node.text "Discard (empty)" ] ]
   else
     let n = List.length discard in
     let top_card = List.hd_exn discard in
@@ -550,6 +566,8 @@ let component graph =
       , [| "—"; "—" |]
       , true
       , (None : string option)
+      , (None : string option)  (* lobby_id_opt *)
+      , 0                       (* my_player_index *)
       )
       graph
   in
@@ -557,7 +575,7 @@ let component graph =
   Bonsai.Value.map state
     ~f:(fun ((screen, vs_comp, st, selected_idxs, hist,
               show_popup, last_draw_multi, last_moves, undo_allowed,
-              winner_msg),
+              winner_msg, lobby_id_opt, my_player_index),
              set_all) ->
 
       let set_all_full
@@ -565,7 +583,7 @@ let component graph =
           ~last_draw_multi' ~last_moves' ~undo_allowed'
           ~winner_msg'
         =
-        set_all
+        let new_model =
           ( screen'
           , vs_comp'
           , st'
@@ -576,7 +594,14 @@ let component graph =
           , last_moves'
           , undo_allowed'
           , winner_msg'
+          , lobby_id_opt      (* keep same lobby id for now *)
+          , my_player_index   (* keep same player index *)
           )
+        in
+        Ui_effect.Many
+          [ set_all new_model
+          ; push_state_effect st'
+          ]
       in
 
       let rec maybe_reshuffle_or_stalemate
@@ -669,6 +694,8 @@ let component graph =
           , last_moves
           , undo_allowed
           , winner_msg
+          , lobby_id_opt
+          , my_player_index
           )
       in
 
@@ -684,6 +711,8 @@ let component graph =
           , last_moves
           , undo_allowed
           , winner_msg
+          , lobby_id_opt
+          , my_player_index
           )
       in
 
@@ -699,6 +728,8 @@ let component graph =
           , last_moves
           , undo_allowed
           , winner_msg
+          , lobby_id_opt
+          , my_player_index
           )
       in
 
@@ -994,7 +1025,18 @@ let component graph =
             Ui_effect.Ignore
       in
 
-      let human_turn () = if vs_comp then st.current = 0 else true in
+            let human_turn () =
+        (* Online mode: only the local player can act.
+           Local mode: existing behavior. *)
+        match lobby_id_opt with
+        | Some _ ->
+            st.current = my_player_index
+        | None ->
+            if vs_comp then
+              st.current = 0
+            else
+              true
+      in
       let hide_hand_now () = (not vs_comp) && Poly.(st.phase = T.EndCheck) in
 
       let current_player = st.players.(st.current) in
@@ -1041,7 +1083,7 @@ let component graph =
                    (if String.equal prev "—" then "Drew: Deck"
                     else prev ^ " | Drew: Deck")
                in
-               let undo_allowed' = false in
+               let _undo_allowed' = false in
                let ai_ran, final_state, final_last_moves =
                  if vs_comp && st_after.T.current = 1 then
                    let (ai_st, ai_lm) = advance_ai_turn st_after last_moves in
@@ -1066,7 +1108,7 @@ let component graph =
                    ~popup':false
                    ~last_draw_multi':false
                    ~last_moves':lm'
-                   ~undo_allowed':undo_allowed'
+                   ~undo_allowed':false
                    ~winner_msg':None)
       in
 
@@ -1087,7 +1129,7 @@ let component graph =
             let lm =
               update_last_move_for_player st.current picked_card_str
             in
-            let undo_allowed' = true in
+            let _undo_allowed' = true in
             let ai_ran, final_state, final_last_moves =
               if vs_comp && st'.T.current = 1 then
                 let (ai_st, ai_lm) = advance_ai_turn st' last_moves in
@@ -1112,7 +1154,7 @@ let component graph =
                 ~popup':false
                 ~last_draw_multi':false
                 ~last_moves':lm'
-                ~undo_allowed':undo_allowed'
+                ~undo_allowed':true
                 ~winner_msg':None
           | Error _ ->
             Ui_effect.Ignore
@@ -1135,7 +1177,7 @@ let component graph =
                 (if String.equal prev "—" then msg else prev ^ " | " ^ msg)
             in
             let last_multi' = true in
-            let undo_allowed' = true in
+            let _undo_allowed' = true in
             let ai_ran, final_state, final_last_moves =
               if vs_comp && st'.T.current = 1 then
                 let (ai_st, ai_lm) = advance_ai_turn st' last_moves in
@@ -1160,10 +1202,33 @@ let component graph =
                 ~popup':false
                 ~last_draw_multi':last_multi'
                 ~last_moves':lm'
-                ~undo_allowed':undo_allowed'
+                ~undo_allowed':true
                 ~winner_msg':None
           | Error _ ->
             Ui_effect.Ignore
+      in
+
+      (* --- PULL FROM FIRESTACK / FIREBASE --- *)
+      let on_sync_from_cloud _ev =
+        let%bind.Effect remote_opt = pull_state_effect () in
+        match remote_opt with
+        | None ->
+            Effect.return ()
+        | Some remote_st ->
+            set_all
+              ( screen
+              , vs_comp
+              , remote_st
+              , selected_idxs
+              , hist
+              , show_popup
+              , last_draw_multi
+              , last_moves
+              , undo_allowed
+              , winner_msg
+              , lobby_id_opt
+              , my_player_index
+              )
       in
 
       let on_sort_hand _ev =
@@ -1343,6 +1408,8 @@ let component graph =
           text-align:center;
           padding:20px;
         |} in
+
+        (* existing local modes: pass & play / vs computer *)
         let start_game vs_flag _ev =
           let st0 = initial_state ~vs_computer:vs_flag () in
           Ui_effect.Many
@@ -1360,6 +1427,49 @@ let component graph =
                 ~winner_msg':None
             ]
         in
+
+        (* NEW: host online game (quickmatch) *)
+        let host_online _ev =
+          (* Fresh 2-player game, synced to default_lobby_id *)
+          let st0 = initial_state ~vs_computer:false () in
+          Ui_effect.Many
+            [ set_vs false
+            ; set_all_full
+                ~screen':`Playing
+                ~vs_comp':false
+                ~st':st0
+                ~selected':[]
+                ~hist':[]
+                ~popup':false
+                ~last_draw_multi':false
+                ~last_moves':[| "—"; "—" |]
+                ~undo_allowed':true
+                ~winner_msg':None
+            ]
+        in
+
+        (* NEW: join online game (quickmatch) *)
+        let join_online _ev =
+          Effect.bind (pull_state_effect ()) ~f:(fun remote_opt ->
+              match remote_opt with
+              | None ->
+                  (* Nothing in the cloud yet; do nothing for now *)
+                  Effect.return ()
+              | Some st_remote ->
+                  set_all_full
+                    ~screen':`Playing
+                    ~vs_comp':false
+                    ~st':st_remote
+                    ~selected':[]
+                    ~hist':[]
+                    ~popup':false
+                    ~last_draw_multi':false
+                    ~last_moves':[| "—"; "—" |]
+                    ~undo_allowed':true
+                    ~winner_msg':None
+            )
+        in
+
         let go_tutorial _ev =
           set_all_full
             ~screen':`Tutorial
@@ -1373,12 +1483,15 @@ let component graph =
             ~undo_allowed':undo_allowed
             ~winner_msg':winner_msg
         in
+
         Vdom.Node.div
           ~attrs:[ style page_css ]
           [ Vdom.Node.h1
               ~attrs:[ style "font-size:32px;margin:0;" ]
               [ Vdom.Node.text "Rummy" ]
           ; Vdom.Node.p [ Vdom.Node.text "Choose a mode to begin:" ]
+
+          (* Local modes row *)
           ; Vdom.Node.div
               [ Vdom.Node.button
                   ~attrs:[ Vdom.Attr.on_click (start_game false); style btn_css ]
@@ -1387,6 +1500,22 @@ let component graph =
                   ~attrs:[ Vdom.Attr.on_click (start_game true); style btn_css ]
                   [ Vdom.Node.text "Play vs Computer" ]
               ]
+
+          (* NEW: online quickmatch row *)
+          ; Vdom.Node.div
+              [ Vdom.Node.button
+                  ~attrs:[ Vdom.Attr.on_click host_online; style btn_css ]
+                  [ Vdom.Node.text "Host Online Game" ]
+              ; Vdom.Node.button
+                  ~attrs:[ Vdom.Attr.on_click join_online; style btn_css ]
+                  [ Vdom.Node.text "Join Online Game" ]
+              ]
+          ; Vdom.Node.p
+              ~attrs:[ style "font-size:12px;color:#ccc;margin-top:4px;" ]
+              [ Vdom.Node.text
+                  ("Online quickmatch code: " ^ default_lobby_id)
+              ]
+
           ; Vdom.Node.button
               ~attrs:[ Vdom.Attr.on_click go_tutorial; style btn_css ]
               [ Vdom.Node.text "Tutorial" ]
@@ -1397,20 +1526,20 @@ let component graph =
           font-family:sans-serif;color:white;background:#000;min-height:100vh;
           padding:20px;display:flex;flex-direction:column;align-items:center;gap:16px;
         |} in
-          let text_css = {|
-    white-space:pre-wrap;
-    background:#111;
-    border:1px solid #333;
-    border-radius:8px;
-    padding:14px;
-    max-width:900px;
-    width:100%;
-    line-height:1.35;
-    word-break:break-word;
-    overflow-wrap:anywhere;
-    max-height:80vh;
-    overflow-y:auto;
-  |} in
+        let text_css = {|
+          white-space:pre-wrap;
+          background:#111;
+          border:1px solid #333;
+          border-radius:8px;
+          padding:14px;
+          max-width:900px;
+          width:100%;
+          line-height:1.35;
+          word-break:break-word;
+          overflow-wrap:anywhere;
+          max-height:80vh;
+          overflow-y:auto;
+        |} in
         let back _ev =
           set_all_full
             ~screen':`Intro
@@ -1496,26 +1625,27 @@ let component graph =
               ]
           | T.Play ->
             let human = human_turn () in
+
+
+            
             if human then
               let hand_is_empty = List.is_empty st.players.(st.current).hand in
-                  let endturn_btn =
-      if hand_is_empty then
-        Vdom.Node.button
-          ~attrs:[
-            Vdom.Attr.on_click (fun _ ->
-              (* optional: record what happened in last-moves *)
-              let _ =
-                update_last_move_for_player st.current
-                  "Rummy without a discard"
-              in
-              (* now actually finish the round and subtract the other hand *)
-              end_round_with_winner ~winner_idx:st.current st
-            );
-            style btn_small_css
-          ]
-          [ Vdom.Node.text "END TURN / RUMMY WITHOUT A DISCARD" ]
-      else
-        Vdom.Node.none
+              let endturn_btn =
+                if hand_is_empty then
+                  Vdom.Node.button
+                    ~attrs:[
+                      Vdom.Attr.on_click (fun _ ->
+                        let _ =
+                          update_last_move_for_player st.current
+                            "Rummy without a discard"
+                        in
+                        end_round_with_winner ~winner_idx:st.current st
+                      );
+                      style btn_small_css
+                    ]
+                    [ Vdom.Node.text "END TURN / RUMMY WITHOUT A DISCARD" ]
+                else
+                  Vdom.Node.none
               in
               Vdom.Node.div
                 ~attrs:[ style controls_row_css ]
@@ -1606,9 +1736,20 @@ let component graph =
         in
 
         let top_area =
+          let sync_btn =
+            Vdom.Node.button
+              ~attrs:[
+                Vdom.Attr.on_click on_sync_from_cloud;
+                style btn_small_css
+              ]
+              [ Vdom.Node.text "Sync from Cloud" ]
+          in
           Vdom.Node.div
             [ view_status_top ~st ~vs_comp
             ; top_opponent_bar
+            ; Vdom.Node.div
+                ~attrs:[ style "padding:8px 10px;text-align:center;" ]
+                [ sync_btn ]
             ]
         in
 
