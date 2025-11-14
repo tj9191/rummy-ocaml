@@ -12,17 +12,18 @@ module Firebase = RE.Firebase_client
 
 let online_mode = ref false
 let my_index    = ref 0
-let default_lobby_id = "n9HZyYuqk9cUnEvEDcz5"  (* or whatever id you want *)
 
+(* No lobby_id argument anymore – single fixed document *)
 let push_state_effect =
   Effect.of_deferred_fun (fun (st : T.state) ->
-      Firebase.push_state ~lobby_id:default_lobby_id st
+      Firebase.push_state st
     )
 
 let pull_state_effect =
   Effect.of_deferred_fun (fun () ->
-      Firebase.pull_state ~lobby_id:default_lobby_id ()
+      Firebase.pull_state ()
     )
+  
 
 let () = Random.self_init ()
 let deck_depletion_count = ref 0
@@ -1208,27 +1209,27 @@ let component graph =
       in
 
       (* --- PULL FROM FIRESTACK / FIREBASE --- *)
-      let on_sync_from_cloud _ev =
-        let%bind.Effect remote_opt = pull_state_effect () in
-        match remote_opt with
-        | None ->
-            Effect.return ()
-        | Some remote_st ->
-            set_all
-              ( screen
-              , vs_comp
-              , remote_st
-              , selected_idxs
-              , hist
-              , show_popup
-              , last_draw_multi
-              , last_moves
-              , undo_allowed
-              , winner_msg
-              , lobby_id_opt
-              , my_player_index
-              )
-      in
+let on_sync_from_cloud _ev =
+  let%bind.Effect remote_opt = pull_state_effect () in
+  match remote_opt with
+  | None ->
+      Effect.return ()
+  | Some remote_st ->
+      set_all
+        ( screen
+        , vs_comp
+        , remote_st
+        , selected_idxs
+        , hist
+        , show_popup
+        , last_draw_multi
+        , last_moves
+        , undo_allowed
+        , winner_msg
+        , lobby_id_opt
+        , my_player_index
+        )
+in
 
       let on_sort_hand _ev =
         if not (human_turn ()) then Ui_effect.Ignore
@@ -1429,45 +1430,49 @@ let component graph =
             ]
         in
 
-        (* Host online: Player 1 (index 0) *)
-        let host_online_game _ev =
-          online_mode := true;
-          my_index := 0;
-          let st0 = initial_state ~vs_computer:false () in
-          set_all_full
-            ~screen':`Playing
-            ~vs_comp':false
-            ~st':st0
-            ~selected':[]
-            ~hist':[]
-            ~popup':false
-            ~last_draw_multi':false
-            ~last_moves':[| "—"; "—" |]
-            ~undo_allowed':true
-            ~winner_msg':None
+        (* Host online: Player 1.
+           Very rough: just start a fresh 2-human game and push it. *)
+        let host_online_attrs =
+          Vdom.Attr.on_click (fun _ev ->
+            online_mode := true;
+            my_index := 0;
+            let st0 = initial_state ~vs_computer:false () in
+            Ui_effect.Many
+              [ set_vs false
+              ; set_all_full
+                  ~screen':`Playing
+                  ~vs_comp':false
+                  ~st':st0
+                  ~selected':[]
+                  ~hist':[]
+                  ~popup':false
+                  ~last_draw_multi':false
+                  ~last_moves':[| "—"; "—" |]
+                  ~undo_allowed':true
+                  ~winner_msg':None
+              ]
+          )
         in
 
-        (* Join online: Player 2 (index 1) *)
-        let join_online_game _ev =
-          online_mode := true;
-          my_index := 1;
-          let%bind.Effect remote_opt = pull_state_effect () in
-          (match remote_opt with
-           | None ->
-               (* Rough version: if nothing in Firestore yet, just do nothing. *)
-               Effect.return ()
-           | Some st0 ->
-               set_all_full
-                 ~screen':`Playing
-                 ~vs_comp':false
-                 ~st':st0
-                 ~selected':[]
-                 ~hist':[]
-                 ~popup':false
-                 ~last_draw_multi':false
-                 ~last_moves':[| "—"; "—" |]
-                 ~undo_allowed':true
-                 ~winner_msg':None)
+        (* Join online: Player 2.
+           Rough version: just go to Playing; other device will host,
+           and you press “Sync from Cloud” once they’ve drawn. *)
+        let join_online_attrs =
+          Vdom.Attr.on_click (fun _ev ->
+            online_mode := true;
+            my_index := 1;
+            set_all_full
+              ~screen':`Playing
+              ~vs_comp':false
+              ~st':st
+              ~selected':selected_idxs
+              ~hist':hist
+              ~popup':false
+              ~last_draw_multi':last_draw_multi
+              ~last_moves':last_moves
+              ~undo_allowed':undo_allowed
+              ~winner_msg':winner_msg
+          )
         in
 
         (* Tutorial screen *)
@@ -1501,10 +1506,10 @@ let component graph =
               ]
           ; Vdom.Node.div
               [ Vdom.Node.button
-                  ~attrs:[ Vdom.Attr.on_click host_online_game; style btn_css ]
+                  ~attrs:[ host_online_attrs; style btn_css ]
                   [ Vdom.Node.text "Host online game" ]
               ; Vdom.Node.button
-                  ~attrs:[ Vdom.Attr.on_click join_online_game; style btn_css ]
+                  ~attrs:[ join_online_attrs; style btn_css ]
                   [ Vdom.Node.text "Join online game" ]
               ]
           ; Vdom.Node.button

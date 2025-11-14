@@ -1,11 +1,13 @@
-(* src/http_client.ml *)
 
-open Core
 open Async_kernel
 
-(* TEMP placeholder so it compiles; you’ll fill real HTTP later *)
-let get (_url : string) : string Deferred.t =
-  failwith "Http_client.get not implemented yet"
+let get (url : string) : string Deferred.t =
+  (* This prints to browser console when compiled to JS *)
+  Stdio.printf "HTTP GET (stub): %s\n%!" url;
+  (* Return a minimal JSON that parse_state_from_firestore can safely handle *)
+  let dummy_json = {|{"fields":{"state":{"stringValue":""}}}|} in
+  Deferred.return dummy_json
 
-let patch (_url : string) (_body : string) : unit Deferred.t =
-  failwith "Http_client.patch not implemented yet"
+let patch (url : string) (body : string) : unit Deferred.t =
+  Stdio.printf "HTTP PATCH (stub): %s\nBODY: %s\n%!" url body;
+  Deferred.unit
