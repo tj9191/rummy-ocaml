@@ -111,3 +111,8 @@ let string_of_rank = function
 
 let string_of_card c =
   Printf.sprintf "%s%s" (string_of_rank c.rank) (string_of_suit c.suit)
+
+type t = {
+  foo : int;
+  bar : string;
+} [@@deriving yojson]

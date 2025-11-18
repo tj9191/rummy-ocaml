@@ -28,7 +28,6 @@ let pull_state_effect =
 let () = Random.self_init ()
 let deck_depletion_count = ref 0
 
-
 (* ---------- helpers ---------- *)
 
 
@@ -579,6 +578,11 @@ let component graph =
               show_popup, last_draw_multi, last_moves, undo_allowed,
               winner_msg, lobby_id_opt, my_player_index),
              set_all) ->
+
+      let sync_to_cloud_effect =
+        Bonsai.Effect.of_sync_fun Firestore.save_state st
+      in
+
 
       let set_all_full
           ~screen' ~vs_comp' ~st' ~selected' ~hist' ~popup'
@@ -1732,7 +1736,7 @@ in
         in
 
         let top_area =
-          let sync_btn =
+          let sync_from_btn =
             Vdom.Node.button
               ~attrs:[
                 Vdom.Attr.on_click on_sync_from_cloud;
@@ -1740,12 +1744,22 @@ in
               ]
               [ Vdom.Node.text "Sync from Cloud" ]
           in
+          let sync_to_btn =
+            Vdom.Node.button
+              ~attrs:[
+                Vdom.Attr.on_click (fun _ -> sync_to_cloud_effect);
+                style btn_small_css
+              ]
+              [ Vdom.Node.text "Sync to Cloud" ]
+          in
           Vdom.Node.div
             [ view_status_top ~st ~vs_comp
             ; top_opponent_bar
             ; Vdom.Node.div
-                ~attrs:[ style "padding:8px 10px;text-align:center;" ]
-                [ sync_btn ]
+                ~attrs:[ style "padding:8px 10px;text-align:center;display:flex;gap:8px;justify-content:center;" ]
+                [ sync_from_btn
+                ; sync_to_btn
+                ]
             ]
         in
 
