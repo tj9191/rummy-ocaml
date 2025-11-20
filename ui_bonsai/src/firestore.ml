@@ -1,5 +1,6 @@
 open! Core
 open Js_of_ocaml
+open Async_kernel
 
 module RE = Rummy_engine
 module T = RE.Types
@@ -7,9 +8,16 @@ module T = RE.Types
 (* Our game state type *)
 type game_state = T.state
 
-(* Firestore document URL *)
-let firestore_doc_url =
-  "https://firestore.googleapis.com/v1/projects/rummy-ocaml/databases/(default)/documents/rummy/n9HZyYuqk9cUnEvEDcz5?updateMask.fieldPaths=state"
+(* Base document URL, no query params *)
+let firestore_doc_url_base =
+  "https://firestore.googleapis.com/v1/projects/rummy-ocaml/databases/(default)/documents/rummy/n9HZyYuqk9cUnEvEDcz5"
+
+(* For GET: use this (no updateMask) *)
+let firestore_get_url = firestore_doc_url_base
+
+(* For PATCH: we can specify updateMask here if we want *)
+let firestore_patch_url =
+  firestore_doc_url_base ^ "?updateMask.fieldPaths=state"
 
 (* ------------------------------------------------------------ *)
 (* SAVE STATE TO FIRESTORE (real PATCH)                         *)
@@ -34,7 +42,7 @@ let save_state (st : game_state) : unit =
   let xhr = XmlHttpRequest.create () in
   xhr##_open
     (Js.string "PATCH")
-    (Js.string firestore_doc_url)
+    (Js.string firestore_patch_url)
     Js._true;
 
   (* Required header for JSON PATCH *)
@@ -70,9 +78,9 @@ let save_state (st : game_state) : unit =
 
 let load_state (on_result : game_state option -> unit) : unit =
   let xhr = XmlHttpRequest.create () in
-  xhr##_open
+    xhr##_open
     (Js.string "GET")
-    (Js.string firestore_doc_url)
+    (Js.string firestore_get_url)
     Js._true;
 
   xhr##.onreadystatechange :=
@@ -96,11 +104,15 @@ let load_state (on_result : game_state option -> unit) : unit =
                   |> member "stringValue"
                   |> to_string
                 in
-                let state_json = Yojson.Safe.from_string state_string in
-                let st = T.state_of_yojson state_json in
-                Firebug.console##log
-                  (Js.string "[Firestore] load_state OK (decoded).");
-                on_result (Some st)
+                match T.deserialize_state state_string with
+                | Some st ->
+                    Firebug.console##log
+                      (Js.string "[Firestore] load_state OK (decoded).");
+                    on_result (Some st)
+                | None ->
+                    Firebug.console##log
+                      (Js.string "[Firestore] load_state: failed to deserialize state.");
+                    on_result None
               with exn ->
                 Firebug.console##log
                   (Js.string
@@ -118,3 +130,11 @@ let load_state (on_result : game_state option -> unit) : unit =
             )
         | _ -> ());
   xhr##send Js.null
+
+  let pull_state () : game_state option Deferred.t =
+  let ivar = Ivar.create () in
+  load_state (fun st_opt ->
+      if not (Ivar.is_full ivar) then
+        Ivar.fill ivar st_opt
+    );
+  Ivar.read ivar

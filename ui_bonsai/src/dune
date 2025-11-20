@@ -1,17 +1,15 @@
 (executable
  (name app)
  (modes js)
- ;; add js_of_ocaml and yojson here
  (libraries
    bonsai.web
    core
    virtual_dom
    rummy_engine
    js_of_ocaml
-   yojson)
- ;; add js_of_ocaml-ppx here
+   yojson
+   async_kernel)
  (preprocess (pps ppx_jane js_of_ocaml-ppx))
  (js_of_ocaml (flags --no-inline --pretty))
- ;; ↓ Disable warnings-as-errors and silence the specific noisy warnings
  (flags :standard -warn-error -A -w -23-32-37-69)
 )

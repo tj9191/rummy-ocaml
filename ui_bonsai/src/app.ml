@@ -8,20 +8,23 @@ module RE       = Rummy_engine
 module T        = RE.Types
 module E        = Rummy_engine.Engine
 module Setup    = RE.Setup
-module Firebase = RE.Firebase_client
+module Firestore = Firestore
 
 let online_mode = ref false
 let my_index    = ref 0
 
-(* No lobby_id argument anymore – single fixed document *)
-let push_state_effect =
-  Effect.of_deferred_fun (fun (st : T.state) ->
-      Firebase.push_state st
+(* Use Firestore (XMLHttpRequest) instead of stubbed Firebase_client *)
+
+(* push: just fire-and-forget *)
+let push_state_effect (st : T.state) : unit Effect.t =
+  Effect.of_thunk (fun () ->
+      Firestore.save_state st
     )
 
-let pull_state_effect =
+(* pull: we’ll wrap Firestore.pull_state (defined below in firestore.ml) *)
+let pull_state_effect : unit -> T.state option Effect.t =
   Effect.of_deferred_fun (fun () ->
-      Firebase.pull_state ()
+      Firestore.pull_state ()
     )
 
 let () = Random.self_init ()
@@ -1214,22 +1217,22 @@ let component graph =
         let%bind remote_opt = pull_state_effect () in
         match remote_opt with
         | None ->
-          Effect.return ()
+            Effect.return ()
         | Some remote_st ->
-          set_all
-            ( screen
-            , vs_comp
-            , remote_st
-            , selected_idxs
-            , hist
-            , show_popup
-            , last_draw_multi
-            , last_moves
-            , undo_allowed
-            , winner_msg
-            , lobby_id_opt
-            , my_player_index
-            )
+            set_all
+              ( screen
+              , vs_comp
+              , remote_st
+              , selected_idxs
+              , hist
+              , show_popup
+              , last_draw_multi
+              , last_moves
+              , undo_allowed
+              , winner_msg
+              , lobby_id_opt
+              , my_player_index
+              )
       in
 
       let on_sort_hand _ev =

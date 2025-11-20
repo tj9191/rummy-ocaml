@@ -1,6 +1,6 @@
 (library
  (name rummy_engine)
- (modules types rules engine setup ai firebase_config http_client firebase_client)
- (libraries core yojson async_kernel)
+ (modules types rules engine setup firebase_config firebase_client http_client ai)
+ (libraries core async_kernel yojson ppx_yojson_conv_lib)
  (preprocess (pps ppx_jane ppx_yojson_conv))
 )

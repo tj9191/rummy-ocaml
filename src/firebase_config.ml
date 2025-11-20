@@ -1,5 +1,3 @@
-(* src/firebase_config.ml *)
-
 open Core
 
 let project_id = "rummy-ocaml"
@@ -13,6 +11,6 @@ let base_url =
 
 let document_id = "n9HZyYuqk9cUnEvEDcz5"
 
-(* Full REST URL for that one document *)
 let document_url () : string =
   sprintf "%s/%s/%s" base_url collection document_id
+
