@@ -23,13 +23,11 @@ let pull_state_effect =
   Effect.of_deferred_fun (fun () ->
       Firebase.pull_state ()
     )
-  
 
 let () = Random.self_init ()
 let deck_depletion_count = ref 0
 
 (* ---------- helpers ---------- *)
-
 
 let string_of_card (c : T.card) = RE.Types.string_of_card c
 let string_of_phase = function
@@ -579,10 +577,8 @@ let component graph =
               winner_msg, lobby_id_opt, my_player_index),
              set_all) ->
 
-      let sync_to_cloud_effect =
-        Bonsai.Effect.of_sync_fun Firestore.save_state st
-      in
-
+      (* push current state to Firestore *)
+      let sync_to_cloud_effect = push_state_effect st in
 
       let set_all_full
           ~screen' ~vs_comp' ~st' ~selected' ~hist' ~popup'
@@ -1212,28 +1208,29 @@ let component graph =
             Ui_effect.Ignore
       in
 
-      (* --- PULL FROM FIRESTACK / FIREBASE --- *)
-let on_sync_from_cloud _ev =
-  let%bind.Effect remote_opt = pull_state_effect () in
-  match remote_opt with
-  | None ->
-      Effect.return ()
-  | Some remote_st ->
-      set_all
-        ( screen
-        , vs_comp
-        , remote_st
-        , selected_idxs
-        , hist
-        , show_popup
-        , last_draw_multi
-        , last_moves
-        , undo_allowed
-        , winner_msg
-        , lobby_id_opt
-        , my_player_index
-        )
-in
+      (* --- PULL FROM FIRESTORE / FIREBASE --- *)
+      let on_sync_from_cloud _ev =
+        let open Effect.Let_syntax in
+        let%bind remote_opt = pull_state_effect () in
+        match remote_opt with
+        | None ->
+          Effect.return ()
+        | Some remote_st ->
+          set_all
+            ( screen
+            , vs_comp
+            , remote_st
+            , selected_idxs
+            , hist
+            , show_popup
+            , last_draw_multi
+            , last_moves
+            , undo_allowed
+            , winner_msg
+            , lobby_id_opt
+            , my_player_index
+            )
+      in
 
       let on_sort_hand _ev =
         if not (human_turn ()) then Ui_effect.Ignore
@@ -1626,8 +1623,6 @@ in
           | T.Play ->
             let human = human_turn () in
 
-
-            
             if human then
               let hand_is_empty = List.is_empty st.players.(st.current).hand in
               let endturn_btn =
@@ -1730,7 +1725,7 @@ in
                 ~attrs:[ style "margin:0;font-size:12px;color:#ddd;" ]
                 [ Vdom.Node.text ("Picked Up: " ^ picked_up_display) ]
             ; Vdom.Node.p
-                ~attrs:[ style "margin:0;font-size:12px;color:#ddd;" ]
+                ~attrs:[ style "margin:0;font-size:12px;color:a#ddd;" ]
                 [ Vdom.Node.text ("Discarded: " ^ discarded_display) ]
             ]
         in

@@ -1,5 +1,3 @@
-(* src/firebase_client.ml *)
-
 open Async_kernel
 
 module Cfg  = Firebase_config
