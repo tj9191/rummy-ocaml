@@ -3,11 +3,11 @@ open! Bonsai
 open! Bonsai_web
 open! Async_kernel
 
-module Vdom     = Virtual_dom.Vdom
-module RE       = Rummy_engine
-module T        = RE.Types
-module E        = Rummy_engine.Engine
-module Setup    = RE.Setup
+module Vdom      = Virtual_dom.Vdom
+module RE        = Rummy_engine
+module T         = RE.Types
+module E         = Rummy_engine.Engine
+module Setup     = RE.Setup
 module Firestore = Firestore
 
 let online_mode = ref false
@@ -15,17 +15,21 @@ let my_index    = ref 0
 
 (* Use Firestore (XMLHttpRequest) instead of stubbed Firebase_client *)
 
-(* push: just fire-and-forget *)
 let push_state_effect (st : T.state) : unit Effect.t =
   Effect.of_thunk (fun () ->
       Firestore.save_state st
     )
 
-(* pull: we’ll wrap Firestore.pull_state (defined below in firestore.ml) *)
 let pull_state_effect : unit -> T.state option Effect.t =
   Effect.of_deferred_fun (fun () ->
       Firestore.pull_state ()
     )
+
+let mark_player2_joined_effect : unit Effect.t =
+  Effect.of_thunk (fun () -> Firestore.mark_player2_joined ())
+
+let check_player2_joined_effect : unit -> bool Effect.t =
+  Effect.of_deferred_fun (fun () -> Firestore.has_player2_joined ())
 
 let () = Random.self_init ()
 let deck_depletion_count = ref 0
@@ -33,6 +37,7 @@ let deck_depletion_count = ref 0
 (* ---------- helpers ---------- *)
 
 let string_of_card (c : T.card) = RE.Types.string_of_card c
+
 let string_of_phase = function
   | T.Draw     -> "Draw"
   | T.Play     -> "Play"
@@ -77,10 +82,10 @@ let suit_order (s : T.suit) : int =
   | Spades   -> 3
 
 let suit_symbol = function
-  | T.Hearts -> "♥"
+  | T.Hearts   -> "♥"
   | T.Diamonds -> "♦"
-  | T.Clubs -> "♣"
-  | T.Spades -> "♠"
+  | T.Clubs    -> "♣"
+  | T.Spades   -> "♠"
 
 let sort_hand_for_display (hand : T.card list) : T.card list =
   List.sort hand ~compare:(fun a b ->
@@ -206,7 +211,6 @@ let view_discard_pile
     ~on_click_stack
     ~on_click_bar
   =
-  (* changed to width:100% and max-width for mobile *)
   let outer_css = {|
     display:flex;flex-direction:column;align-items:center;
     font-family:sans-serif;
@@ -287,7 +291,10 @@ let view_discard_pile
     in
     Vdom.Node.div
       ~attrs:[ style outer_css ]
-      ([ if n > 1 then Vdom.Node.div ~attrs:[ style bar_css ] bar_nodes else Vdom.Node.none ]
+      ([ if n > 1 then
+           Vdom.Node.div ~attrs:[ style bar_css ] bar_nodes
+         else
+           Vdom.Node.none ]
        @ [ Vdom.Node.div ~attrs:[ style stack_css ] (layer_nodes @ [ top_node ]) ])
 
 let view_hand_row
@@ -312,10 +319,15 @@ let view_hand_row
     (List.mapi hand ~f:(fun i card ->
          let is_sel = List.mem selected_idxs i ~equal:Int.equal in
          let border_color = if is_sel then "gold" else "#333" in
-         let wrapper = Printf.sprintf "border:2px solid %s;border-radius:8px;" border_color in
+         let wrapper =
+           Printf.sprintf "border:2px solid %s;border-radius:8px;" border_color
+         in
          Vdom.Node.div
            ~attrs:[ style wrapper; Vdom.Attr.on_click (fun _ -> on_click_card i) ]
-           [ view_faceup_card ~selected:is_sel ~on_click:(fun _ -> Ui_effect.Ignore) card ]))
+           [ view_faceup_card
+               ~selected:is_sel
+               ~on_click:(fun _ -> Ui_effect.Ignore)
+               card ]))
 
 (* ---------- top status (with points, aware of vs_comp) ---------- *)
 
@@ -355,8 +367,11 @@ let view_status_top ~(st : T.state) ~(vs_comp : bool) =
     ]
 
 (* ---------- melds (right panel) with LAY HERE ---------- *)
-let view_melds_right_panel ~(melds : T.meld list) ~(on_layoff : int -> unit Ui_effect.t) =
-  (* made width:100% and added mobile-full class from our global style *)
+
+let view_melds_right_panel
+    ~(melds : T.meld list)
+    ~(on_layoff : int -> unit Ui_effect.t)
+  =
   let outer_css = {|
     background:#111;
     border:1px solid #333;
@@ -390,7 +405,8 @@ let view_melds_right_panel ~(melds : T.meld list) ~(on_layoff : int -> unit Ui_e
   |} in
   let body =
     if List.is_empty melds then
-      [ Vdom.Node.div ~attrs:[ style "color:#ddd;font-size:12px;" ]
+      [ Vdom.Node.div
+          ~attrs:[ style "color:#ddd;font-size:12px;" ]
           [ Vdom.Node.text "No melds on table" ] ]
     else
       List.mapi melds ~f:(fun i m ->
@@ -401,7 +417,9 @@ let view_melds_right_panel ~(melds : T.meld list) ~(on_layoff : int -> unit Ui_e
           Vdom.Node.div
             ~attrs:[ style row_css ]
             [ Vdom.Node.div
-                [ Vdom.Node.text (Printf.sprintf "%d) %s: %s" (i+1) kind_str cards_str) ]
+                [ Vdom.Node.text
+                    (Printf.sprintf "%d) %s: %s" (i + 1) kind_str cards_str)
+                ]
             ; Vdom.Node.button
                 ~attrs:[ style btn_css; Vdom.Attr.on_click (fun _ -> on_layoff i) ]
                 [ Vdom.Node.text "LAY HERE" ]
@@ -433,7 +451,8 @@ let view_modal ~message ~on_close =
         ~attrs:[ style card; Vdom.Attr.on_click (fun _ -> Ui_effect.Ignore) ]
         [ Vdom.Node.h3 [ Vdom.Node.text "Heads up" ]
         ; Vdom.Node.p [ Vdom.Node.text message ]
-        ; Vdom.Node.button ~attrs:[ style btn; Vdom.Attr.on_click on_close ]
+        ; Vdom.Node.button
+            ~attrs:[ style btn; Vdom.Attr.on_click on_close ]
             [ Vdom.Node.text "OK" ]
         ]
     ]
@@ -574,19 +593,30 @@ let component graph =
       graph
   in
 
-  Bonsai.Value.map state
+    Bonsai.Value.map state
     ~f:(fun ((screen, vs_comp, st, selected_idxs, hist,
               show_popup, last_draw_multi, last_moves, undo_allowed,
               winner_msg, lobby_id_opt, my_player_index),
              set_all) ->
 
-      (* push current state to Firestore *)
+                  (* In online mode, also push state to Firestore. *)
+      let push_if_online (st' : T.state) : unit Ui_effect.t =
+        if !online_mode then
+          push_state_effect st'
+        else
+          Ui_effect.Ignore
+      in
+
+      (* Manual "Sync to Cloud" button uses this *)
       let sync_to_cloud_effect = push_state_effect st in
 
+      (* Unified "set everything" helper: update Bonsai model *)
+      (* Unified "set everything" helper: update Bonsai model *)
       let set_all_full
           ~screen' ~vs_comp' ~st' ~selected' ~hist' ~popup'
           ~last_draw_multi' ~last_moves' ~undo_allowed'
           ~winner_msg'
+        : unit Effect.t
         =
         let new_model =
           ( screen'
@@ -599,15 +629,38 @@ let component graph =
           , last_moves'
           , undo_allowed'
           , winner_msg'
-          , lobby_id_opt      (* keep same lobby id for now *)
+          , lobby_id_opt      (* keep same lobby id *)
           , my_player_index   (* keep same player index *)
           )
         in
-        Ui_effect.Many
-          [ set_all new_model
-          ; push_state_effect st'
-          ]
+        set_all new_model
       in
+
+            (* Install Firestore realtime listener (JS -> Bonsai bridge).
+         We use Effect.Expert.handle_non_dom_event to run the [set_all_full]
+         effect from a JS callback (outside normal DOM events). *)
+            let realtime_listener_effect : unit Effect.t =
+        Effect.of_thunk (fun () ->
+            Firestore.start_realtime_listener (fun remote_st ->
+                (* Run the Bonsai effect produced by [set_all_full]
+                   from this JS callback. *)
+                Ui_effect.Expert.handle
+                  (set_all_full
+                     ~screen':`Playing
+                     ~vs_comp':false
+                     ~st':remote_st
+                     ~selected':[]
+                     ~hist':[]
+                     ~popup':false
+                     ~last_draw_multi':false
+                     ~last_moves':last_moves
+                     ~undo_allowed':true
+                     ~winner_msg':None)
+              )
+          )
+      in
+
+
 
       let rec maybe_reshuffle_or_stalemate
           ~(screen : [> `Intro ])
@@ -777,101 +830,103 @@ let component graph =
         =
         match st_ai.T.phase with
         | T.Draw ->
-            let discard_nonempty = not (List.is_empty st_ai.T.discard) in
-            let coin = Random.State.int rng 2 in
+          let discard_nonempty = not (List.is_empty st_ai.T.discard) in
+          let coin = Random.State.int rng 2 in
 
-            let try_deck () =
-              match E.draw ~source:T.FromDeck st_ai with
-              | Ok st' | End_round st' ->
-                (match maybe_reshuffle_or_stalemate
-                         ~screen
-                         ~vs_comp
-                         ~hist
-                         ~last_moves
-                         ~set_all_full
-                         st'
-                 with
-                 | None -> None
-                 | Some st_after ->
-                   Some (st_after, Some "Drew: Deck", None))
-              | Error _ -> None
-            in
+          let try_deck () =
+            match E.draw ~source:T.FromDeck st_ai with
+            | Ok st' | End_round st' ->
+              (match maybe_reshuffle_or_stalemate
+                       ~screen
+                       ~vs_comp
+                       ~hist
+                       ~last_moves
+                       ~set_all_full
+                       st'
+               with
+               | None -> None
+               | Some st_after ->
+                 Some (st_after, Some "Drew: Deck", None))
+            | Error _ -> None
+          in
 
-            let try_discard () =
-              match st_ai.T.discard with
-              | top :: _ ->
-                (match E.draw ~source:T.FromDiscard st_ai with
-                 | Ok st' | End_round st' ->
-                   let msg =
-                     Printf.sprintf "Drew: Discard (top) %s" (string_of_card top)
-                   in
-                   Some (st', Some msg, None)
-                 | Error _ -> None)
-              | [] -> None
-            in
+          let try_discard () =
+            match st_ai.T.discard with
+            | top :: _ ->
+              (match E.draw ~source:T.FromDiscard st_ai with
+               | Ok st' | End_round st' ->
+                 let msg =
+                   Printf.sprintf "Drew: Discard (top) %s" (string_of_card top)
+                 in
+                 Some (st', Some msg, None)
+               | Error _ -> None)
+            | [] -> None
+          in
 
-            if coin = 0 then
-              match try_deck () with
+          if coin = 0 then
+            match try_deck () with
+            | Some r -> Some r
+            | None ->
+              if discard_nonempty then try_discard () else None
+          else
+            if discard_nonempty then
+              match try_discard () with
               | Some r -> Some r
-              | None ->
-                if discard_nonempty then try_discard () else None
+              | None -> try_deck ()
             else
-              if discard_nonempty then
-                match try_discard () with
-                | Some r -> Some r
-                | None -> try_deck ()
-              else
-                try_deck ()
+              try_deck ()
         | T.Play ->
-            let p = st_ai.players.(st_ai.current) in
-            let rec combinations_k k xs =
-              if k = 0 then [ [] ]
-              else
-                match xs with
-                | [] -> []
-                | y :: ys ->
-                  let with_y =
-                    List.map (combinations_k (k - 1) ys) ~f:(fun rest -> y :: rest)
-                  in
-                  let without = combinations_k k ys in
-                  with_y @ without
-            in
-            let all_3plus hand =
-              let n = List.length hand in
-              List.concat_map (List.range 3 (n + 1)) ~f:(fun k ->
-                  combinations_k k hand)
-            in
-            let combos = all_3plus p.hand in
-            let rec try_melds = function
-              | [] -> None
-              | cs :: rest ->
-                (match E.play ~action:(T.Make_set cs) st_ai with
-                 | Ok st' | End_round st' -> Some (st', None, Some cs)
-                 | Error _ ->
-                   (match E.play ~action:(T.Make_run cs) st_ai with
-                    | Ok st' | End_round st' -> Some (st', None, Some cs)
-                    | Error _ -> try_melds rest))
-            in
-            (match try_melds combos with
-             | Some r -> Some r
-             | None ->
-               (match E.play ~action:T.Skip_to_discard st_ai with
-                | Ok st' | End_round st' -> Some (st', None, None)
-                | Error _ -> None))
+          let p = st_ai.players.(st_ai.current) in
+          let rec combinations_k k xs =
+            if k = 0 then [ [] ]
+            else
+              match xs with
+              | [] -> []
+              | y :: ys ->
+                let with_y =
+                  List.map (combinations_k (k - 1) ys) ~f:(fun rest -> y :: rest)
+                in
+                let without = combinations_k k ys in
+                with_y @ without
+          in
+          let all_3plus hand =
+            let n = List.length hand in
+            List.concat_map (List.range 3 (n + 1)) ~f:(fun k ->
+                combinations_k k hand)
+          in
+          let combos = all_3plus p.hand in
+          let rec try_melds = function
+            | [] -> None
+            | cs :: rest ->
+              (match E.play ~action:(T.Make_set cs) st_ai with
+               | Ok st' | End_round st' -> Some (st', None, Some cs)
+               | Error _ ->
+                 (match E.play ~action:(T.Make_run cs) st_ai with
+                  | Ok st' | End_round st' -> Some (st', None, Some cs)
+                  | Error _ -> try_melds rest))
+          in
+          (match try_melds combos with
+           | Some r -> Some r
+           | None ->
+             (match E.play ~action:T.Skip_to_discard st_ai with
+              | Ok st' | End_round st' -> Some (st', None, None)
+              | Error _ -> None))
         | T.Discard ->
-            let p = st_ai.players.(st_ai.current) in
-            (match p.hand with
-             | [] -> None
-             | hand ->
-               let idx = Random.State.int rng (List.length hand) in
-               let card = List.nth_exn hand idx in
-               (match E.discard ~action:(T.Discard_card card) st_ai with
-                | Ok st' | End_round st' ->
-                  let msg = Printf.sprintf "Discarded: %s" (string_of_card card) in
-                  Some (st', Some msg, None)
-                | Error _ -> None))
+          let p = st_ai.players.(st_ai.current) in
+          (match p.hand with
+           | [] -> None
+           | hand ->
+             let idx = Random.State.int rng (List.length hand) in
+             let card = List.nth_exn hand idx in
+             (match E.discard ~action:(T.Discard_card card) st_ai with
+              | Ok st' | End_round st' ->
+                let msg =
+                  Printf.sprintf "Discarded: %s" (string_of_card card)
+                in
+                Some (st', Some msg, None)
+              | Error _ -> None))
         | T.EndCheck ->
-            None
+          None
       in
 
       (* AI driver: do AI until human again *)
@@ -937,7 +992,7 @@ let component graph =
       in
 
       (* ---------- end-of-round / winner ---------- *)
-      let end_round_with_winner ~(winner_idx:int) (st_after : T.state) =
+            let end_round_with_winner ~(winner_idx : int) (st_after : T.state) =
         let loser_idx = 1 - winner_idx in
         let loser_hand = st_after.players.(loser_idx).hand in
         let penalty = penalty_of_hand loser_hand in
@@ -953,20 +1008,25 @@ let component graph =
             st_after.players.(1).name
             scores'.(1)
         in
-        set_all_full
-          ~screen':screen
-          ~vs_comp':vs_comp
-          ~st':{ st_after with scores = scores' }
-          ~selected':[]
-          ~hist':hist
-          ~popup':false
-          ~last_draw_multi':false
-          ~last_moves':last_moves
-          ~undo_allowed':false
-          ~winner_msg':(Some msg)
+        let final_state = { st_after with scores = scores' } in
+        Ui_effect.Many
+          [ set_all_full
+              ~screen':screen
+              ~vs_comp':vs_comp
+              ~st':final_state
+              ~selected':[]
+              ~hist':hist
+              ~popup':false
+              ~last_draw_multi':false
+              ~last_moves':last_moves
+              ~undo_allowed':false
+              ~winner_msg':(Some msg)
+          ; push_if_online final_state
+          ]
       in
 
-      (* ---------- apply_and_maybe_ai ---------- *)
+            (* ---------- apply_and_maybe_ai ---------- *)
+            (* ---------- apply_and_maybe_ai ---------- *)
       let apply_and_maybe_ai
           ?(last_multi = false)
           ?(last_moves_opt = None)
@@ -976,6 +1036,9 @@ let component graph =
         let hist' =
           (copy_state st, last_draw_multi, Array.copy last_moves) :: hist
         in
+        (* Who was the current player before this action? *)
+        let old_current = st.current in
+
         let ai_ran, final_state, final_last_moves =
           if vs_comp && st_after.T.current = 1 then
             let (ai_st, ai_lm) = advance_ai_turn st_after last_moves in
@@ -984,8 +1047,10 @@ let component graph =
             (false, st_after,
              Option.value last_moves_opt ~default:last_moves)
         in
+
         let p0_empty = List.is_empty final_state.players.(0).hand in
         let p1_empty = List.is_empty final_state.players.(1).hand in
+
         if p0_empty && not p1_empty then
           end_round_with_winner ~winner_idx:0 final_state
         else if p1_empty && not p0_empty then
@@ -995,18 +1060,30 @@ let component graph =
             if ai_ran then final_last_moves
             else Option.value last_moves_opt ~default:final_last_moves
           in
-          let undo_allowed' = Option.value undo_allowed_opt ~default:true in
-          set_all_full
-            ~screen':screen
-            ~vs_comp':vs_comp
-            ~st':final_state
-            ~selected':[]
-            ~hist':hist'
-            ~popup':false
-            ~last_draw_multi':last_multi
-            ~last_moves':lm'
-            ~undo_allowed':undo_allowed'
-            ~winner_msg':None
+          let undo_allowed' =
+            Option.value undo_allowed_opt ~default:true
+          in
+          (* Normal UI update effect *)
+          let update_effect =
+            set_all_full
+              ~screen':screen
+              ~vs_comp':vs_comp
+              ~st':final_state
+              ~selected':[]
+              ~hist':hist'
+              ~popup':false
+              ~last_draw_multi':last_multi
+              ~last_moves':lm'
+              ~undo_allowed':undo_allowed'
+              ~winner_msg':None
+          in
+          (* Did the turn pass to the other player? *)
+          let turn_changed = final_state.current <> old_current in
+          if turn_changed then
+            (* In online mode, also push the new state to Firestore *)
+            Ui_effect.Many [ update_effect; push_if_online final_state ]
+          else
+            update_effect
       in
 
       (* ---------- UNDO ---------- *)
@@ -1040,7 +1117,10 @@ let component graph =
         else
           true
       in
-      let hide_hand_now () = (not vs_comp) && Poly.(st.phase = T.EndCheck) in
+
+      let hide_hand_now () =
+        (not vs_comp) && Poly.(st.phase = T.EndCheck)
+      in
 
       let current_player = st.players.(st.current) in
 
@@ -1094,14 +1174,20 @@ let component graph =
                  else
                    (false, st_after, lm)
                in
-               let p0_empty = List.is_empty final_state.players.(0).hand in
-               let p1_empty = List.is_empty final_state.players.(1).hand in
+               let p0_empty =
+                 List.is_empty final_state.players.(0).hand
+               in
+               let p1_empty =
+                 List.is_empty final_state.players.(1).hand
+               in
                if p0_empty && not p1_empty then
                  end_round_with_winner ~winner_idx:0 final_state
                else if p1_empty && not p0_empty then
                  end_round_with_winner ~winner_idx:1 final_state
                else
-                 let lm' = if ai_ran then final_last_moves else lm in
+                 let lm' =
+                   if ai_ran then final_last_moves else lm
+                 in
                  set_all_full
                    ~screen':screen
                    ~vs_comp':vs_comp
@@ -1124,7 +1210,9 @@ let component graph =
           in
           let picked_card_str =
             match st.discard with
-            | top :: _ -> Printf.sprintf "Drew: Discard (top) %s" (string_of_card top)
+            | top :: _ ->
+              Printf.sprintf
+                "Drew: Discard (top) %s" (string_of_card top)
             | [] -> "Drew: Discard (top)"
           in
           match E.draw ~source:T.FromDiscard st with
@@ -1140,14 +1228,20 @@ let component graph =
               else
                 (false, st', lm)
             in
-            let p0_empty = List.is_empty final_state.players.(0).hand in
-            let p1_empty = List.is_empty final_state.players.(1).hand in
+            let p0_empty =
+              List.is_empty final_state.players.(0).hand
+            in
+            let p1_empty =
+              List.is_empty final_state.players.(1).hand
+            in
             if p0_empty && not p1_empty then
               end_round_with_winner ~winner_idx:0 final_state
             else if p1_empty && not p0_empty then
               end_round_with_winner ~winner_idx:1 final_state
             else
-              let lm' = if ai_ran then final_last_moves else lm in
+              let lm' =
+                if ai_ran then final_last_moves else lm
+              in
               set_all_full
                 ~screen':screen
                 ~vs_comp':vs_comp
@@ -1173,11 +1267,14 @@ let component graph =
           match E.draw ~source:(T.FromDiscardN (i_from_top + 1)) st with
           | Ok st' | End_round st' ->
             let count = i_from_top + 1 in
-            let msg = Printf.sprintf "Drew: Discard (multi %d)" count in
+            let msg =
+              Printf.sprintf "Drew: Discard (multi %d)" count
+            in
             let prev = last_moves.(st.current) in
             let lm =
               update_last_move_for_player st.current
-                (if String.equal prev "—" then msg else prev ^ " | " ^ msg)
+                (if String.equal prev "—" then msg
+                 else prev ^ " | " ^ msg)
             in
             let last_multi' = true in
             let _undo_allowed' = true in
@@ -1188,14 +1285,20 @@ let component graph =
               else
                 (false, st', lm)
             in
-            let p0_empty = List.is_empty final_state.players.(0).hand in
-            let p1_empty = List.is_empty final_state.players.(1).hand in
+            let p0_empty =
+              List.is_empty final_state.players.(0).hand
+            in
+            let p1_empty =
+              List.is_empty final_state.players.(1).hand
+            in
             if p0_empty && not p1_empty then
               end_round_with_winner ~winner_idx:0 final_state
             else if p1_empty && not p0_empty then
               end_round_with_winner ~winner_idx:1 final_state
             else
-              let lm' = if ai_ran then final_last_moves else lm in
+              let lm' =
+                if ai_ran then final_last_moves else lm
+              in
               set_all_full
                 ~screen':screen
                 ~vs_comp':vs_comp
@@ -1211,28 +1314,28 @@ let component graph =
             Ui_effect.Ignore
       in
 
-      (* --- PULL FROM FIRESTORE / FIREBASE --- *)
+      (* --- PULL FROM FIRESTORE --- *)
       let on_sync_from_cloud _ev =
         let open Effect.Let_syntax in
         let%bind remote_opt = pull_state_effect () in
         match remote_opt with
         | None ->
-            Effect.return ()
+          Effect.return ()
         | Some remote_st ->
-            set_all
-              ( screen
-              , vs_comp
-              , remote_st
-              , selected_idxs
-              , hist
-              , show_popup
-              , last_draw_multi
-              , last_moves
-              , undo_allowed
-              , winner_msg
-              , lobby_id_opt
-              , my_player_index
-              )
+          set_all
+            ( screen
+            , vs_comp
+            , remote_st
+            , selected_idxs
+            , hist
+            , show_popup
+            , last_draw_multi
+            , last_moves
+            , undo_allowed
+            , winner_msg
+            , lobby_id_opt
+            , my_player_index
+            )
       in
 
       let on_sort_hand _ev =
@@ -1330,7 +1433,9 @@ let component graph =
                             Printf.sprintf "Discarded: %s"
                               (string_of_card card))
                      in
-                     let hand_after = st_after_disc.players.(st_after_disc.current).hand in
+                     let hand_after =
+                       st_after_disc.players.(st_after_disc.current).hand
+                     in
                      if List.is_empty hand_after then
                        end_round_with_winner
                          ~winner_idx:st_after_disc.current
@@ -1434,52 +1539,63 @@ let component graph =
             ]
         in
 
-        (* Host online: Player 1.
-           Very rough: just start a fresh 2-human game and push it. *)
+        (* Host online: Player 1. *)
         let host_online_attrs =
           Vdom.Attr.on_click (fun _ev ->
-            online_mode := true;
-            my_index := 0;
-            let st0 = initial_state ~vs_computer:false () in
-            Ui_effect.Many
-              [ set_vs false
-              ; set_all_full
-                  ~screen':`Playing
-                  ~vs_comp':false
-                  ~st':st0
-                  ~selected':[]
-                  ~hist':[]
-                  ~popup':false
-                  ~last_draw_multi':false
-                  ~last_moves':[| "—"; "—" |]
-                  ~undo_allowed':true
-                  ~winner_msg':None
-              ]
-          )
+              online_mode := true;
+              my_index := 0;
+              let st0 = initial_state ~vs_computer:false () in
+              (* Move to Waiting_online, push initial state to Firestore,
+                 and install the realtime listener. *)
+              Ui_effect.Many
+                [ set_all_full
+                    ~screen':`Waiting_online
+                    ~vs_comp':false
+                    ~st':st0
+                    ~selected':[]
+                    ~hist':[]
+                    ~popup':false
+                    ~last_draw_multi':false
+                    ~last_moves':[| "—"; "—" |]
+                    ~undo_allowed':true
+                    ~winner_msg':None
+                ; push_state_effect st0
+                ; realtime_listener_effect
+                ]
+            )
         in
 
-        (* Join online: Player 2.
-           Rough version: just go to Playing; other device will host,
-           and you press “Sync from Cloud” once they’ve drawn. *)
+        (* Join online: Player 2. *)
         let join_online_attrs =
           Vdom.Attr.on_click (fun _ev ->
-            online_mode := true;
-            my_index := 1;
-            set_all_full
-              ~screen':`Playing
-              ~vs_comp':false
-              ~st':st
-              ~selected':selected_idxs
-              ~hist':hist
-              ~popup':false
-              ~last_draw_multi':last_draw_multi
-              ~last_moves':last_moves
-              ~undo_allowed':undo_allowed
-              ~winner_msg':winner_msg
-          )
+              online_mode := true;
+              my_index := 1;
+              let open Effect.Let_syntax in
+              let%bind remote_opt = pull_state_effect () in
+              match remote_opt with
+              | None ->
+                (* Nothing in Firestore yet; do nothing. *)
+                Effect.return ()
+              | Some remote_st ->
+                (* Use the host’s state from Firestore, enter Playing,
+                   and install the realtime listener. *)
+                Ui_effect.Many
+                  [ set_all_full
+                      ~screen':`Playing
+                      ~vs_comp':false
+                      ~st':remote_st
+                      ~selected':[]
+                      ~hist':[]
+                      ~popup':false
+                      ~last_draw_multi':false
+                      ~last_moves':[| "—"; "—" |]
+                      ~undo_allowed':true
+                      ~winner_msg':None
+                  ; realtime_listener_effect
+                  ]
+            )
         in
 
-        (* Tutorial screen *)
         let go_tutorial _ev =
           set_all_full
             ~screen':`Tutorial
@@ -1519,6 +1635,53 @@ let component graph =
           ; Vdom.Node.button
               ~attrs:[ Vdom.Attr.on_click go_tutorial; style btn_css ]
               [ Vdom.Node.text "Tutorial" ]
+          ]
+
+      | `Waiting_online ->
+        let page_css = {|
+          font-family:sans-serif;
+          color:white;
+          background-color:#000;
+          min-height:100vh;
+          display:flex;
+          flex-direction:column;
+          align-items:center;
+          justify-content:center;
+          gap:20px;
+          text-align:center;
+          padding:20px;
+        |} in
+        let info_css = {|
+          max-width:600px;
+          font-size:14px;
+          line-height:1.4;
+        |} in
+        let start_game _ev =
+          set_all_full
+            ~screen':`Playing
+            ~vs_comp':false
+            ~st':st
+            ~selected':selected_idxs
+            ~hist':hist
+            ~popup':false
+            ~last_draw_multi':last_draw_multi
+            ~last_moves':last_moves
+            ~undo_allowed':undo_allowed
+            ~winner_msg':winner_msg
+        in
+        Vdom.Node.div
+          ~attrs:[ style page_css ]
+          [ Vdom.Node.h2 [ Vdom.Node.text "Hosting Online Game" ]
+          ; Vdom.Node.p
+              ~attrs:[ style info_css ]
+              [ Vdom.Node.text
+                  "You are Player 1 (host). Ask your friend to open this site \
+                   on their device and click “Join online game”. Once they’ve \
+                   joined and synced from the cloud, click the button below \
+                   to start playing." ]
+          ; Vdom.Node.button
+              ~attrs:[ Vdom.Attr.on_click start_game; style btn_css ]
+              [ Vdom.Node.text "Start game (Player 2 is ready)" ]
           ]
 
       | `Tutorial ->
@@ -1568,7 +1731,6 @@ let component graph =
           display:flex;flex-direction:column;min-height:100vh;
           background-color:#000;color:white;font-family:sans-serif;
         |} in
-        (* new responsive middle layout *)
         let middle_wrap_css = {|
           flex-grow:1;
           display:flex;
@@ -1621,24 +1783,26 @@ let component graph =
             Vdom.Node.div
               [ Vdom.Node.div
                   ~attrs:[ style "color:white;font-size:14px;margin-top:8px;" ]
-                  [ Vdom.Node.text "Draw: Deck (top) or Discard (top / multi)." ]
+                  [ Vdom.Node.text
+                      "Draw: Deck (top) or Discard (top / multi)." ]
               ]
           | T.Play ->
             let human = human_turn () in
-
             if human then
-              let hand_is_empty = List.is_empty st.players.(st.current).hand in
+              let hand_is_empty =
+                List.is_empty st.players.(st.current).hand
+              in
               let endturn_btn =
                 if hand_is_empty then
                   Vdom.Node.button
                     ~attrs:[
                       Vdom.Attr.on_click (fun _ ->
-                        let _ =
-                          update_last_move_for_player st.current
-                            "Rummy without a discard"
-                        in
-                        end_round_with_winner ~winner_idx:st.current st
-                      );
+                          let _ =
+                            update_last_move_for_player st.current
+                              "Rummy without a discard"
+                          in
+                          end_round_with_winner ~winner_idx:st.current st
+                        );
                       style btn_small_css
                     ]
                     [ Vdom.Node.text "END TURN / RUMMY WITHOUT A DISCARD" ]
@@ -1648,13 +1812,22 @@ let component graph =
               Vdom.Node.div
                 ~attrs:[ style controls_row_css ]
                 [ Vdom.Node.button
-                    ~attrs:[ Vdom.Attr.on_click on_sort_hand; style btn_small_css ]
+                    ~attrs:[
+                      Vdom.Attr.on_click on_sort_hand;
+                      style btn_small_css
+                    ]
                     [ Vdom.Node.text "SORT HAND" ]
                 ; Vdom.Node.button
-                    ~attrs:[ Vdom.Attr.on_click on_meld_selected; style btn_small_css ]
+                    ~attrs:[
+                      Vdom.Attr.on_click on_meld_selected;
+                      style btn_small_css
+                    ]
                     [ Vdom.Node.text "MELD THESE CARDS" ]
                 ; Vdom.Node.button
-                    ~attrs:[ Vdom.Attr.on_click on_discard_from_play; style btn_small_css ]
+                    ~attrs:[
+                      Vdom.Attr.on_click on_discard_from_play;
+                      style btn_small_css
+                    ]
                     [ Vdom.Node.text "DISCARD" ]
                 ; endturn_btn
                 ]
@@ -1668,17 +1841,22 @@ let component graph =
                 ~attrs:[ style endcheck_wrap_css ]
                 [ Vdom.Node.p [ Vdom.Node.text "Finish your turn." ]
                 ; Vdom.Node.button
-                    ~attrs:[ Vdom.Attr.on_click on_discard_phase_finish; style btn_small_css ]
+                    ~attrs:[
+                      Vdom.Attr.on_click on_discard_phase_finish;
+                      style btn_small_css
+                    ]
                     [ Vdom.Node.text "CONTINUE" ]
                 ]
             else
-              Vdom.Node.div [ Vdom.Node.text "Computer discarding..." ]
+              Vdom.Node.div
+                [ Vdom.Node.text "Computer discarding..." ]
           | T.EndCheck ->
             let pass_msg =
               if not vs_comp then
                 Vdom.Node.p
                   ~attrs:[ style "color:red;font-size:14px;margin-top:8px;" ]
-                  [ Vdom.Node.text "Please pass your device to the next player." ]
+                  [ Vdom.Node.text
+                      "Please pass your device to the next player." ]
               else
                 Vdom.Node.none
             in
@@ -1697,8 +1875,12 @@ let component graph =
         let opponent_idx = 1 - st.current in
         let opponent = st.players.(opponent_idx) in
         let opp_last_move = last_moves.(opponent_idx) in
-        let picked_up_display = picked_up_from_last_move opp_last_move in
-        let discarded_display = discarded_from_last_move opp_last_move in
+        let picked_up_display =
+          picked_up_from_last_move opp_last_move
+        in
+        let discarded_display =
+          discarded_from_last_move opp_last_move
+        in
 
         let top_opponent_bar =
           let outer_css = {|
@@ -1716,7 +1898,8 @@ let component graph =
             [ Vdom.Node.h3
                 ~attrs:[ style "margin:0;font-size:14px;font-weight:700;" ]
                 [ Vdom.Node.text
-                  (Printf.sprintf "%s (%d cards)" opponent.name (List.length opponent.hand))
+                    (Printf.sprintf "%s (%d cards)"
+                       opponent.name (List.length opponent.hand))
                 ]
             ; (if vs_comp then
                  Vdom.Node.p
@@ -1728,7 +1911,7 @@ let component graph =
                 ~attrs:[ style "margin:0;font-size:12px;color:#ddd;" ]
                 [ Vdom.Node.text ("Picked Up: " ^ picked_up_display) ]
             ; Vdom.Node.p
-                ~attrs:[ style "margin:0;font-size:12px;color:a#ddd;" ]
+                ~attrs:[ style "margin:0;font-size:12px;color:#ddd;" ]
                 [ Vdom.Node.text ("Discarded: " ^ discarded_display) ]
             ]
         in
@@ -1767,29 +1950,28 @@ let component graph =
               style middle_wrap_css;
               Vdom.Attr.class_ "mobile-column mobile-hide-scroll"
             ]
-            [
-              Vdom.Node.div
+            [ Vdom.Node.div
                 ~attrs:[
                   style "display:flex;flex-direction:row;justify-content:center;align-items:flex-start;gap:14px;width:100%;";
                   Vdom.Attr.class_ "mobile-center"
                 ]
-                [
-                  Vdom.Node.div
-                    ~attrs:[ style table_css; Vdom.Attr.class_ "mobile-full" ]
-                    [
-                      view_facedown_card
+                [ Vdom.Node.div
+                    ~attrs:[
+                      style table_css;
+                      Vdom.Attr.class_ "mobile-full"
+                    ]
+                    [ view_facedown_card
                         ~count:(List.length st.deck)
-                        ~on_click:on_click_deck;
-                      view_discard_pile
+                        ~on_click:on_click_deck
+                    ; view_discard_pile
                         ~discard:st.discard
                         ~on_click_stack:on_click_discard_stack
-                        ~on_click_bar:on_click_discard_bar;
+                        ~on_click_bar:on_click_discard_bar
                     ]
-                ];
-
-              view_melds_right_panel
+                ]
+            ; view_melds_right_panel
                 ~melds:st.melds
-                ~on_layoff:(fun idx -> on_layoff ~meld_idx:idx);
+                ~on_layoff:(fun idx -> on_layoff ~meld_idx:idx)
             ]
         in
 
@@ -1803,7 +1985,8 @@ let component graph =
               |} in
               Vdom.Node.div
                 ~attrs:[ style hidden_css ]
-                [ Vdom.Node.text "Hand hidden. Please pass your device." ]
+                [ Vdom.Node.text
+                    "Hand hidden. Please pass your device." ]
             else
               view_hand_row
                 ~hand:active_hand
@@ -1847,13 +2030,37 @@ let component graph =
             Vdom.Node.none
         in
 
-        let winner_modal =
+                let winner_modal =
           match winner_msg with
           | None -> Vdom.Node.none
           | Some msg ->
             view_modal
               ~message:msg
               ~on_close:(fun _ -> Ui_effect.Ignore)
+        in
+
+        let waiting_overlay =
+          if !online_mode && st.current <> !my_index then
+            let css = {|
+              position:fixed;
+              inset:0;
+              background:rgba(0,0,0,0.95);
+              display:flex;
+              align-items:center;
+              justify-content:center;
+              z-index:9999;
+              font-size:20px;
+              font-family:sans-serif;
+              color:white;
+              text-align:center;
+              padding:20px;
+              pointer-events:none;
+            |} in
+            Vdom.Node.div
+              ~attrs:[ style css ]
+              [ Vdom.Node.text "Waiting for your opponent..." ]
+          else
+            Vdom.Node.none
         in
 
         Vdom.Node.div
@@ -1864,6 +2071,7 @@ let component graph =
           ; undo_button
           ; modal
           ; winner_modal
+          ; waiting_overlay
           ]
     )
 

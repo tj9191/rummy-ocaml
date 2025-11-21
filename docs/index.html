@@ -1,13 +1,54 @@
 <!doctype html>
 <html>
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Rummy – Bonsai mock</title>
-  <link rel="stylesheet" href="style.css" />
-</head>
-<body>
-  <div id="app"></div>
-  <script src="app.bc.js"></script>
-</body>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Rummy</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+
+  <body>
+    <div id="app"></div>
+
+    <!-- Firestore realtime listener: defines window.startRummyListener -->
+    <script type="module">
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+      import { getFirestore, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+      // 🔴 TODO: put your real config here (same one you used before)
+      const firebaseConfig = {
+        apiKey: "YOUR_API_KEY",
+        authDomain: "rummy-ocaml.firebaseapp.com",
+        projectId: "rummy-ocaml",
+        storageBucket: "rummy-ocaml.appspot.com",
+        messagingSenderId: "YOUR_SENDER_ID",
+        appId: "YOUR_APP_ID"
+      };
+
+      const app = initializeApp(firebaseConfig);
+      const db  = getFirestore(app);
+
+      // This is what OCaml calls via Js_of_ocaml
+      window.startRummyListener = function (cb) {
+        // doc path must match what you're PATCHing in firestore.ml
+        const d = doc(db, "rummy", "n9HZyYuqk9cUnEvEDcz5");
+
+        return onSnapshot(
+          d,
+          (snapshot) => {
+            const data = snapshot.data();
+            if (data && data.state && typeof data.state.stringValue === "string") {
+              cb(data.state.stringValue);
+            }
+          },
+          (error) => {
+            console.error("[Firestore] onSnapshot error:", error);
+          }
+        );
+      };
+    </script>
+
+    <!-- Your compiled Bonsai app (must be in the same folder as this HTML) -->
+    <script src="app.bc.js"></script>
+  </body>
 </html>
